@@ -1,0 +1,12 @@
+version: '3.3'
+
+services:
+  motor_tatico:
+    build: .
+    image: labind-ssl-ai:latest
+    container_name: ssl_motor_tatico
+    network_mode: "host" # Essencial para ouvir o Juiz e o grSim
+    volumes:
+      - .:/app # O "buraco na caixa" para atualizar o código em tempo real
+    environment:
+      - PYTHONUNBUFFERED=1 # Garante que os prints apareçam na hora no VS Code!

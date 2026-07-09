@@ -8,3 +8,6 @@ __pycache__/
 
 # Arquivos do sistema
 .DS_Store
+
+# Configurações do Editor (VS Code)
+.vscode/
