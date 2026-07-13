@@ -5,6 +5,7 @@ import socket
 import zmq
 import os
 import struct
+import argparse
 from behavior_tree import *
 
 # Descobre onde o main.py está e aponta para a pasta proto_msg interna
@@ -69,12 +70,12 @@ class ProportionalController:
         self.max_vel = max_vel
         self.max_angular_vel = max_angular_vel
         
-        # Parâmetros do APF
-        self.dist_segura = 0.30  # Mantemos 80cm por conta das altas velocidades
-        self.kr_repulsao = 0.40  # Aumentamos a força para agir como um "muro" e vencer a inércia
+        # Valores drasticamente reduzidos para suportar o campo lotado (12 robôs)
+        self.dist_segura = 0.12  # Raio do robô + folga mínima
+        self.kr_repulsao = 0.005  # Repulsão base muito mais suave
 
     def calculate_velocity(self, robot_x, robot_y, robot_yaw, ball_x, ball_y, obstacles):
-        # 1. FORÇA DE ATRAÇÃO[cite: 1]
+        # 1. FORÇA DE ATRAÇÃO
         attr_x = ball_x - robot_x  
         attr_y = ball_y - robot_y  
         
@@ -83,30 +84,28 @@ class ProportionalController:
         vx_global = attr_x * self.kp_linear
         vy_global = attr_y * self.kp_linear
         
-        # O Limitador da Atração (Anti-trator)[cite: 1]
+        # O Limitador da Atração (Anti-trator)
         mag_attr = math.hypot(vx_global, vy_global)
         if mag_attr > self.max_vel:
             vx_global = (vx_global / mag_attr) * self.max_vel
             vy_global = (vy_global / mag_attr) * self.max_vel
-            mag_attr = self.max_vel # Atualizamos a magnitude real que o robô vai tentar atingir
+            mag_attr = self.max_vel 
 
         # ==========================================
-        # A MÁGICA DA VELOCIDADE (Bolha Dinâmica)
+        # A MÁGICA DA VELOCIDADE (Bolha Dinâmica - COMPACTA)
         # ==========================================
-        # Cria um fator de 0.0 a 1.0 indicando quão perto da velocidade máxima estamos
         fator_velocidade = mag_attr / self.max_vel 
         
-        # Se estiver muito rápido, a distância segura aumenta em até 50cm (1.10m total)
-        dist_segura_dinamica = self.dist_segura + (fator_velocidade * 0.85)
+        # Aumenta no máximo +15cm de segurança quando estiver rápido (Total 30cm)
+        dist_segura_dinamica = self.dist_segura + (fator_velocidade * 0.15)
         
-        # O "muro" também fica mais duro proporcionalmente à velocidade
-        kr_dinamico = self.kr_repulsao + (fator_velocidade * 0.70)
+        # Aumenta a força repulsiva de forma sutil
+        kr_dinamico = self.kr_repulsao + (fator_velocidade * 0.08)
         
-        # 2. FORÇA DE REPULSÃO (Com correção GNRON)[cite: 1]
+        # 2. FORÇA DE REPULSÃO (Com correção GNRON e Paredes Sólidas)
         rep_x = 0.0
         rep_y = 0.0
         
-        # Fator de foco agora usa a distância dinâmica
         fator_foco = min(dist_bola / dist_segura_dinamica, 1.0)
         
         for obs in obstacles:
@@ -114,21 +113,34 @@ class ProportionalController:
             dy = robot_y - obs.pos.y
             dist_obs = math.hypot(dx, dy)
             
-            # Repulsão agora começa mais cedo se o robô estiver rápido
-            if 0.01 < dist_obs < dist_segura_dinamica:
+            # A MÁGICA: É uma parede virtual ou um robô físico?
+            is_wall = not hasattr(obs, 'id')
+            
+            if is_wall:
+                # PAREDE DE CONCRETO: Empurra muito forte e de mais longe
+                dist_segura_atual = 0.90  # Sente a parede a 40cm de distância
+                kr_atual = 3.0            # Força brutal (ignora a atração da bola)
+                fator_foco_atual = 1.0    # Sempre empurra com 100% de prioridade
+            else:
+                # ROBÔ DE ESPUMA: Repulsão suave configurada anteriormente
+                dist_segura_atual = dist_segura_dinamica
+                kr_atual = kr_dinamico
+                fator_foco_atual = fator_foco
+            
+            # Aplica a força dependendo do tipo de obstáculo
+            if 0.01 < dist_obs < dist_segura_atual:
                 dist_calc = max(dist_obs, 0.15) 
                 
-                # Aplica a nova força dinâmica
-                forca = (kr_dinamico / (dist_calc ** 2)) * fator_foco
+                forca = (kr_atual / (dist_calc ** 2)) * fator_foco_atual
                 
                 rep_x += (dx / dist_obs) * forca
                 rep_y += (dy / dist_obs) * forca
                 
-        # 3. SOMA VETORIAL GLOBAL[cite: 1]
+        # 3. SOMA VETORIAL GLOBAL
         vx_global += rep_x
         vy_global += rep_y
 
-        # 4. ROTAÇÃO[cite: 1]
+        # 4. ROTAÇÃO
         target_angle = math.atan2(attr_y, attr_x)
         erro_angular = target_angle - robot_yaw
         erro_angular = (erro_angular + math.pi) % (2 * math.pi) - math.pi
@@ -141,7 +153,7 @@ class ProportionalController:
         if vw > self.max_angular_vel: vw = self.max_angular_vel
         elif vw < -self.max_angular_vel: vw = -self.max_angular_vel
         
-        # 5. TRANSLAÇÃO LOCAL (Matriz de Rotação)[cite: 1]
+        # 5. TRANSLAÇÃO LOCAL (Matriz de Rotação)
         v_forward = vx_global * math.cos(robot_yaw) + vy_global * math.sin(robot_yaw)
         v_left = -vx_global * math.sin(robot_yaw) + vy_global * math.cos(robot_yaw)
         
@@ -289,7 +301,8 @@ class RefereeClient:
         return None, None
 
 
-def maestro_distribui_papeis(team_robots, ball_pos, id_goleiro=0):
+def maestro_distribui_papeis(team_robots, ball_pos, enemy_goal_x, last_roles=None, id_goleiro=0):
+    if last_roles is None: last_roles = {}
     papeis = {}
     if not team_robots: return papeis
     
@@ -307,7 +320,13 @@ def maestro_distribui_papeis(team_robots, ball_pos, id_goleiro=0):
     for r in team_robots:
         r_id = getattr(r, 'id', 0)
         if r_id == id_goleiro or (abs(r.pos.x) < 0.001 and abs(r.pos.y) < 0.001): continue
+        
         dist_bola = math.hypot(r.pos.x - ball_pos.x, r.pos.y - ball_pos.y)
+        
+        # CORREÇÃO 1: Histerese do Atacante (Evita que fiquem brigando pela bola)
+        if last_roles.get(r_id, "") == "ATACANTE":
+            dist_bola -= 0.5 # Bônus: Finge estar 50cm mais perto para segurar a vaga
+            
         if dist_bola < min_dist_bola:
             min_dist_bola = dist_bola
             id_atacante = r_id
@@ -315,85 +334,118 @@ def maestro_distribui_papeis(team_robots, ball_pos, id_goleiro=0):
     if id_atacante is not None:
         papeis[id_atacante] = "ATACANTE"
 
-    # 2. Define a Zaga (Os robôs que estão mais perto do NOSSO gol)
+    # 2. Define o Apoio e a Zaga
     sobra = []
     for r in team_robots:
         r_id = getattr(r, 'id', 0)
         if r_id not in papeis and (abs(r.pos.x) >= 0.001 or abs(r.pos.y) >= 0.001):
-            dist_gol = math.hypot(r.pos.x - (-6.0), r.pos.y - 0.0)
-            sobra.append((dist_gol, r_id))
+            dist_gol_inimigo = math.hypot(r.pos.x - enemy_goal_x, r.pos.y - 0.0)
             
-    # Ordena a sobra pela distância do gol
+            # CORREÇÃO 2: Histerese correta para a defesa não "pular"
+            papel_antigo = last_roles.get(r_id, "")
+            if papel_antigo == "ATACANTE_APOIO":
+                dist_gol_inimigo -= 2.0 
+            elif papel_antigo == "ZAGUEIRO_BLOQUEIO":
+                dist_gol_inimigo += 2.0 
+            elif papel_antigo == "ZAGUEIRO_MARCACAO":
+                dist_gol_inimigo += 1.0 
+                
+            sobra.append((dist_gol_inimigo, r_id))
+            
+    # Ordena a lista: [Mais Perto do Inimigo ... Mais Perto do Nosso Gol]
     sobra.sort(key=lambda x: x[0])
     
+    # CORREÇÃO 3: Distribuição limpa usando pop()
     if len(sobra) > 0:
-        papeis[sobra[0][1]] = "ZAGUEIRO_BLOQUEIO" # O mais recuado faz a parede
-    if len(sobra) > 1:
-        papeis[sobra[1][1]] = "ZAGUEIRO_MARCACAO" # O segundo mais recuado é o carrapato
+        # Pega o primeiro da lista (Mais Avançado)
+        papeis[sobra.pop(0)[1]] = "ATACANTE_APOIO" 
         
-    # Se sobrar mais algum, fica em espera (No futuro, esse será o Atacante de Apoio!)
-    for i in range(2, len(sobra)):
-        papeis[sobra[i][1]] = "ESPERA"
+    if len(sobra) > 0:
+        # Pega o ÚLTIMO da lista (Mais Recuado)
+        papeis[sobra.pop(-1)[1]] = "ZAGUEIRO_BLOQUEIO" 
+        
+    if len(sobra) > 0:
+        # Pega o novo ÚLTIMO da lista
+        papeis[sobra.pop(-1)[1]] = "ZAGUEIRO_MARCACAO" 
+        
+    # Quem restou no meio-campo fica na reserva
+    for s in sobra:
+        papeis[s[1]] = "ESPERA"
         
     return papeis
 
 def build_attacker_tree():
     """Constrói a Behavior Tree do Atacante e retorna o nó raiz."""
     
-    # 1. RAMO DE EMERGÊNCIA
-    ramo_emergencia = Sequence([
-        ConditionIsHalted(),
-        ActionStopMotors()
-    ])
+    ramo_emergencia = Sequence([ConditionIsHalted(), ActionStopMotors()])
+    ramo_kickoff = Sequence([ConditionIsPrepareKickoff(), ActionPrepareKickoff()])
     
-    # 2. RAMO DE KICKOFF
-    ramo_kickoff = Sequence([
-        ConditionIsPrepareKickoff(),
-        ActionPrepareKickoff()
-    ])
-    
-    # 3. RAMO OFENSIVO (Jogo Valendo)
-    # 3.1. Finalizar
+    # 3.1. Finalizar (O Radar encontrou uma fresta no gol)
     tentar_finalizar = Sequence([
         ConditionIsNearBall(),
         ConditionIsInShootingZone(),
-        ConditionIsPathClear(),
+        ConditionIsPathClear(), 
         ActionAimAndShoot()
     ])
     
-    # 3.2. Conduzir
+    # 3.2. NOVO: O Passe! (Gol bloqueado, mas tem parceiro limpo)
+    tentar_passe = Sequence([
+        ConditionIsNearBall(),
+        ConditionIsPassClear(), # Verifica companheiro e linha limpa
+        ActionPassBall()
+    ])
+    
+    # 3.3. Achar Ângulo (Tudo bloqueado. Anda de lado!)
+    achar_angulo = Sequence([
+        ConditionIsNearBall(),
+        ConditionIsInShootingZone(),
+        ActionFindShootingAngle()
+    ])
+    
+    # 3.4. Conduzir 
     tentar_conduzir = Sequence([
         ConditionIsNearBall(),
         ActionDribbleToGoal()
     ])
     
-    # 3.3. Buscar (Ação Fallback - se não tem a bola, busca)
+    # 3.5. Buscar 
     buscar_bola = ActionGoToBall()
     
-    # Agrupa todo o comportamento ofensivo
+    # Agrupa todo o comportamento ofensivo (A Ordem Importa Muito!)
     ramo_ofensivo = Sequence([
         ConditionIsGameRunning(),
         Selector([
             tentar_finalizar,
+            tentar_passe,   # Tenta o passe antes de decidir andar de lado!
+            achar_angulo,   
             tentar_conduzir,
             buscar_bola
         ])
     ])
     
-    # A RAIZ DA ÁRVORE (Testa emergência, depois kickoff, depois ataque)
-    root = Selector([
-        ramo_emergencia,
-        ramo_kickoff,
-        ramo_ofensivo
-    ])
-    
+    root = Selector([ramo_emergencia, ramo_kickoff, ramo_ofensivo])
     return root
 
+def build_atacante_apoio_tree():
+    return Selector([
+        Sequence([ConditionIsHalted(), ActionStopMotors()]),
+        Sequence([ConditionIsGameRunning(), ActionPositionForPass()]),
+        ActionStopMotors() # Fallback: Se o jogo não tá valendo, FREIA O ROBÔ!
+    ])
+
 def build_zaga_bloqueio_tree():
-    return ActionZagueiroBloqueio()
+    return Selector([
+        Sequence([ConditionIsHalted(), ActionStopMotors()]),
+        Sequence([ConditionIsGameRunning(), ActionZagueiroBloqueio()]),
+        ActionStopMotors() 
+    ])
 
 def build_zaga_marcacao_tree():
-    return ActionZagueiroMarcacao()
+    return Selector([
+        Sequence([ConditionIsHalted(), ActionStopMotors()]),
+        Sequence([ConditionIsGameRunning(), ActionZagueiroMarcacao()]),
+        ActionStopMotors() 
+    ])
 
 def build_goleiro_tree():
     """Constrói a Behavior Tree do Goleiro."""
@@ -433,16 +485,36 @@ def build_espera_tree():
 def main():
     print("Iniciando Motor Tático da Behavior Tree...")
     
-    # 1. Inicializa os módulos de infraestrutura
+    # 1. Lê os argumentos do Docker para saber qual time somos
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--team', default='yellow', choices=['yellow', 'blue'])
+    args = parser.parse_args()
+    
+    is_yellow = (args.team == 'yellow')
+    
+    # A porta padrão do grSim: 10302 para Amarelo, 10301 para Azul
+    porta_comando = 10302 if is_yellow else 10301
+    
+    # 2. Inicializa os módulos de infraestrutura
     vision = VisionClient(port=5558) 
     referee = RefereeClient(ip="224.5.23.1", port=10003)
+    # Voltando o kp_angular para 2.0 (positivo)
     controller = ProportionalController(kp_linear=2.0, kp_angular=2.0, max_vel=2.5, max_angular_vel=5.0)
-    action = ActionClient(port=10302)
+    action = ActionClient(port=porta_comando)
     
-    # 2. Inicializa o Blackboard passando as ferramentas
+    # 3. Inicializa o Blackboard
     bb = Blackboard(controller, action)
-    bb.is_yellow = True
-    bb.my_id = 1
+    bb.is_yellow = is_yellow
+    
+    # === A MÁGICA DOS LADOS ===
+    # Amarelo defende o gol positivo (6.0) e ataca o negativo (-6.0)
+    if is_yellow:
+        bb.our_goal_x = 6.0
+        bb.enemy_goal_x = -6.0
+    else:
+        bb.our_goal_x = -6.0
+        bb.enemy_goal_x = 6.0
+        
     
     # 3. Constrói o Cérebro do Atacante
     arvore_atacante = build_attacker_tree()
@@ -450,8 +522,17 @@ def main():
     arvore_espera = build_espera_tree()
     arvore_zaga_bloqueio = build_zaga_bloqueio_tree()
     arvore_zaga_marcacao = build_zaga_marcacao_tree()
+    arvore_atacante_apoio = build_atacante_apoio_tree()
 
     cycle_time = 1.0 / 60 
+    
+    arvore_zaga_marcacao = build_zaga_marcacao_tree()
+    arvore_atacante_apoio = build_atacante_apoio_tree()
+
+    cycle_time = 1.0 / 60 
+    
+    # --- NOVO: Timer para o Debug ---
+    last_debug_time = time.time()
     
     while True:
         start_time = time.time()
@@ -480,11 +561,16 @@ def main():
             # ==========================================
             # FASE 2: O MAESTRO (Distribuição Tática)
             # ==========================================
-            # TUDO DAQUI PARA BAIXO ESTÁ DENTRO DO IF STATE IS NOT NONE
             team_robots = world.yellow if bb.is_yellow else world.blue
             
-            # O Maestro diz o que cada um faz (Definimos ID 0 como Goleiro)
-            papeis_do_time = maestro_distribui_papeis(team_robots, bb.ball_pos, id_goleiro=0)
+            # Resgata a memória do frame anterior (se existir)
+            papeis_anteriores = getattr(bb, 'papeis', {})
+            
+            # Passa a memória para o Maestro
+            papeis_do_time = maestro_distribui_papeis(team_robots, bb.ball_pos, bb.enemy_goal_x, papeis_anteriores, id_goleiro=0)
+            
+            bb.papeis = papeis_do_time
+            bb.team = team_robots
 
             # ==========================================
             # FASE 3: COMPORTAMENTO E AÇÃO (Multi-Agente)
@@ -502,6 +588,9 @@ def main():
                     bb.my_id = robo_id
                     bb.my_pos = robo
                     bb.my_role = papeis_do_time[robo_id]
+                    
+                    # CORREÇÃO AQUI: A lista de inimigos para a zaga
+                    bb.enemies = world.blue if bb.is_yellow else world.yellow
 
                     # --- NOVO: CONSTRÓI OS OBSTÁCULOS PARA ESTE ROBÔ ---
                     bb.obstacles = []
@@ -520,6 +609,10 @@ def main():
                     if bb.my_role == "ATACANTE":
                         arvore_atacante.tick(bb)
 
+                    elif bb.my_role == "ATACANTE_APOIO":
+                        arvore_atacante_apoio.tick(bb)
+
+
                     elif bb.my_role == "ZAGUEIRO_BLOQUEIO":
                         arvore_zaga_bloqueio.tick(bb) # Não esqueça de declarar essa árvore no main()!
                     
@@ -532,7 +625,18 @@ def main():
                     elif bb.my_role == "GOLEIRO":
                         # Por enquanto, deixa parado até fazermos a árvore dele
                         arvore_goleiro.tick(bb)
-        
+
+        # ==========================================
+        # PAINEL DE DEBUG (Imprime a cada 1 segundo)
+        # ==========================================
+        if time.time() - last_debug_time > 1.0:
+            time_nome = "AMARELO" if bb.is_yellow else "AZUL"
+            print(f"[{time_nome}] Estado do Juiz: {bb.referee_command}")
+            for r_id, papel in bb.papeis.items():
+                print(f"  ID {r_id}: {papel}")
+            print("-" * 30)
+            last_debug_time = time.time()
+            
         # ==========================================
         # CONTROLE DE FPS (60Hz)
         # ==========================================

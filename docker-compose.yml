@@ -1,12 +1,24 @@
 version: '3.3'
 
 services:
-  motor_tatico:
+  time_amarelo:
     build: .
     image: labind-ssl-ai:latest
-    container_name: ssl_motor_tatico
-    network_mode: "host" # Essencial para ouvir o Juiz e o grSim
+    container_name: ssl_amarelo
+    network_mode: "host"
     volumes:
-      - .:/app # O "buraco na caixa" para atualizar o código em tempo real
+      - .:/app
     environment:
-      - PYTHONUNBUFFERED=1 # Garante que os prints apareçam na hora no VS Code!
+      - PYTHONUNBUFFERED=1
+    command: ["python", "main.py", "--team", "yellow"]
+
+  time_azul:
+    build: .
+    image: labind-ssl-ai:latest
+    container_name: ssl_azul
+    network_mode: "host"
+    volumes:
+      - .:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: ["python", "main.py", "--team", "blue"]

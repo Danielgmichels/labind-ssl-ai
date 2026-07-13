@@ -34,7 +34,9 @@ class ActionPrepareKickoff(Node):
         # 1. O Alvo Virtual
         # Como o time ataca para a esquerda (X negativo), nós posicionamos 
         # o robô no lado direito da bola (X positivo) para ele chutar para a esquerda.
-        alvo_x = blackboard.ball_pos.x + 0.25 
+        # Descobre a direção (1 se positivo, -1 se negativo)
+        direcao = 1 if blackboard.enemy_goal_x > 0 else -1
+        alvo_x = blackboard.ball_pos.x - (direcao * 0.25) 
         alvo_y = blackboard.ball_pos.y
         
         # 2. Navegação com APF
@@ -88,13 +90,16 @@ class ActionGoToBall(Node):
         
         # Proteção de Geofencing: Se a bola rolou pra dentro da área
         # (Lembrando que o campo longo vai até -6.0 e 6.0, com a área até -5.0 e 5.0)
-        na_nossa_area = (-6.0 <= alvo_x <= -5.0) and (-1.0 <= alvo_y <= 1.0)
-        na_area_inimiga = (5.0 <= alvo_x <= 6.0) and (-1.0 <= alvo_y <= 1.0)
+        na_area_esq = (-6.0 <= alvo_x <= -5.0) and (-1.5 <= alvo_y <= 1.5)
+        na_area_dir = (5.0 <= alvo_x <= 6.0) and (-1.5 <= alvo_y <= 1.5)
         
-        if na_nossa_area or na_area_inimiga:
-            # Fica de campana do lado de fora acompanhando o Y
-            alvo_x = -4.8 if na_nossa_area else 4.8 
+        if na_area_esq:
+            alvo_x = -4.8
             alvo_y = max(-1.2, min(alvo_y, 1.2))
+        elif na_area_dir:
+            alvo_x = 4.8
+            alvo_y = max(-1.2, min(alvo_y, 1.2))
+
 
         # APF para calcular o caminho, desviando de robôs e das paredes virtuais[cite: 1]
         vf, vl, vw = blackboard.controller.calculate_velocity(
@@ -115,7 +120,7 @@ class ActionDribbleToGoal(Node):
         if blackboard.my_pos is None:
             return NodeState.FAILURE
 
-        gol_inimigo_x = -6.0
+        gol_inimigo_x = blackboard.enemy_goal_x
         gol_inimigo_y = 0.0
 
         # Usa o APF para guiar a bola até o gol, desviando de bloqueios[cite: 1]
@@ -134,36 +139,170 @@ class ActionDribbleToGoal(Node):
 
 
 class ActionAimAndShoot(Node):
-    """Gira no próprio eixo (Pivô) para mirar no gol e atira quando o ângulo estiver limpo."""
+    """Gira no próprio eixo mirando no alvo livre (best_shot_y) e atira."""
     def tick(self, blackboard):
         if blackboard.my_pos is None:
             return NodeState.FAILURE
 
-        gol_inimigo_x = -6.0
-        gol_inimigo_y = 0.0
+        gol_inimigo_x = blackboard.enemy_goal_x
+        
+        # Lê o alvo salvo pelo Radar! Se não tiver, chuta no meio.
+        gol_inimigo_y = getattr(blackboard, 'best_shot_y', 0.0)
 
-        # 1. Mira
+        # 1. Mira exata na fresta
         target_angle = math.atan2(gol_inimigo_y - blackboard.my_pos.pos.y, 
                                   gol_inimigo_x - blackboard.my_pos.pos.x)
         erro_angular = target_angle - blackboard.my_pos.yaw
         erro_angular = (erro_angular + math.pi) % (2 * math.pi) - math.pi
         
-        # 2. Gira para o gol
         vw = erro_angular * blackboard.controller.kp_angular
         vw = max(min(vw, blackboard.controller.max_angular_vel), -blackboard.controller.max_angular_vel)
         
-        # 3. Matemática do Pivô para não soltar a bola[cite: 1]
         raio_do_robo = 0.09 
         vl = vw * raio_do_robo 
-        vf = 0.5
+        vf = 0.5 
         velocidade_chute = 0.0
         
-        # 4. Checa se o alinhamento está perfeito
         if abs(erro_angular) < 0.1:
             vw = 0.0
             vl = 0.0
-            velocidade_chute = 6.0 # Força máxima![cite: 1]
-            vf = 1.0 # Arrancada do impacto[cite: 1]
+            velocidade_chute = 6.0 
+            vf = 1.0 
+            
+        blackboard.action.send_command(
+            robot_id=blackboard.my_id, v_forward=vf, v_left=vl, vw=vw,
+            kick_speed=velocidade_chute, dribbler_speed=1500.0
+        )
+        return NodeState.RUNNING
+
+
+class ActionFindShootingAngle(Node):
+    """Fica de frente para o gol rodando o driblador e anda de lado (Strafing) até abrir espaço."""
+    def tick(self, blackboard):
+        if blackboard.my_pos is None:
+            return NodeState.FAILURE
+
+        gol_inimigo_x = blackboard.enemy_goal_x
+        gol_inimigo_y = 0.0
+        
+        # Mantém a mira no centro do gol enquanto anda
+        target_angle = math.atan2(gol_inimigo_y - blackboard.my_pos.pos.y, 
+                                  gol_inimigo_x - blackboard.my_pos.pos.x)
+        erro_angular = target_angle - blackboard.my_pos.yaw
+        erro_angular = (erro_angular + math.pi) % (2 * math.pi) - math.pi
+        
+        vw = erro_angular * blackboard.controller.kp_angular
+        vw = max(min(vw, blackboard.controller.max_angular_vel), -blackboard.controller.max_angular_vel)
+        
+        # A Mágica do Passo Lateral: 
+        # Forçamos o v_forward a quase zero (para não bater na zaga)
+        # E colocamos uma velocidade em v_left para ele deslizar lateralmente
+        vf = 0.1 
+        vl = 1.0 # Velocidade lateral constante
+        
+        # Se estiver muito para baixo no campo (Y negativo), inverte o lado para subir
+        if blackboard.my_pos.pos.y < 0:
+            vl = -1.0 
+
+        blackboard.action.send_command(
+            robot_id=blackboard.my_id, v_forward=vf, v_left=vl, vw=vw,
+            kick_speed=0.0, dribbler_speed=1500.0 # Segura a bola firme!
+        )
+        return NodeState.RUNNING
+    
+class ActionPositionForPass(Node):
+    """
+    Corre para a trave oposta de onde a bola está, criando opção de passe.
+    O robô fica estacionado na beirada da área, sempre encarando a bola.
+    """
+    def tick(self, blackboard):
+        if blackboard.my_pos is None or blackboard.ball_pos is None:
+            return NodeState.FAILURE
+
+        # 1. A Matemática do Espaço Vazio (Cross-Field)
+        # Se a bola está na parte de cima do campo, vamos para a parte de baixo
+        if blackboard.ball_pos.y > 0:
+            alvo_y = -2.5 
+        else:
+            alvo_y = 2.5  
+        
+        # Descobre a direção (1 se positivo, -1 se negativo)
+        direcao = 1 if blackboard.enemy_goal_x > 0 else -1
+        # O X será fixado na linha imaginária pouco antes da área inimiga
+        alvo_x = blackboard.enemy_goal_x - (direcao * 1.5) 
+
+        
+        # 2. Navegação com APF
+        vf, vl, vw = blackboard.controller.calculate_velocity(
+            blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw, 
+            alvo_x, alvo_y, blackboard.obstacles
+        )
+        
+        # 3. Gira como um radar: Bico SEMPRE apontado para a bola
+        target_angle = math.atan2(blackboard.ball_pos.y - blackboard.my_pos.pos.y, 
+                                  blackboard.ball_pos.x - blackboard.my_pos.pos.x)
+        erro_angular = target_angle - blackboard.my_pos.yaw
+        erro_angular = (erro_angular + math.pi) % (2 * math.pi) - math.pi
+        
+        if abs(erro_angular) > 0.05:
+            vw = erro_angular * blackboard.controller.kp_angular
+            vw = max(min(vw, blackboard.controller.max_angular_vel), -blackboard.controller.max_angular_vel)
+        else:
+            vw = 0.0
+            
+        # 4. Freio de precisão
+        # Se chegou a 30cm do ponto alvo, zera a velocidade para não ficar tremendo
+        dist_alvo = math.hypot(alvo_x - blackboard.my_pos.pos.x, alvo_y - blackboard.my_pos.pos.y)
+        if dist_alvo < 0.3:
+            vf = 0.0
+            vl = 0.0
+
+        # Envia comando com o driblador ligado por segurança (se a bola sobrar, ele gruda!)
+        blackboard.action.send_command(
+            robot_id=blackboard.my_id, v_forward=vf, v_left=vl, vw=vw,
+            kick_speed=0.0, dribbler_speed=1500.0 
+        )
+        return NodeState.RUNNING
+    
+class ActionPassBall(Node):
+    """
+    Gira encarando o parceiro de time (salvo no pass_target).
+    Calcula a força ideal do chute baseada na distância para não espirrar a bola.
+    """
+    def tick(self, blackboard):
+        if blackboard.my_pos is None or not hasattr(blackboard, 'pass_target'):
+            return NodeState.FAILURE
+            
+        alvo = blackboard.pass_target
+        
+        # 1. Mira cravada no peito do companheiro
+        target_angle = math.atan2(alvo.pos.y - blackboard.my_pos.pos.y, 
+                                  alvo.pos.x - blackboard.my_pos.pos.x)
+        erro_angular = target_angle - blackboard.my_pos.yaw
+        erro_angular = (erro_angular + math.pi) % (2 * math.pi) - math.pi
+        
+        vw = erro_angular * blackboard.controller.kp_angular
+        vw = max(min(vw, blackboard.controller.max_angular_vel), -blackboard.controller.max_angular_vel)
+        
+        # Mantém a posse enquanto gira
+        raio_do_robo = 0.09 
+        vl = vw * raio_do_robo 
+        vf = 0.5 
+        velocidade_chute = 0.0
+        
+        # 2. Se alinhou, chuta!
+        if abs(erro_angular) < 0.1:
+            vw = 0.0
+            vl = 0.0
+            
+            # A Matemática da Força:
+            # Calcula a distância exata em metros entre os dois robôs
+            dist_passe = math.hypot(alvo.pos.x - blackboard.my_pos.pos.x, alvo.pos.y - blackboard.my_pos.pos.y)
+            
+            # Multiplicar a distância por 1.8 gera uma velocidade de chute (m/s) 
+            # proporcional, permitindo que a bola chegue firme, mas dominável.
+            velocidade_chute = min(dist_passe * 1.8, 6.0) # Trava o máximo em 6.0 m/s
+            vf = 1.0 # Leve tranco pra frente
             
         blackboard.action.send_command(
             robot_id=blackboard.my_id, v_forward=vf, v_left=vl, vw=vw,
@@ -180,16 +319,17 @@ class ActionDefendGoal(Node):
         if blackboard.my_pos is None or blackboard.ball_pos is None:
             return NodeState.FAILURE
 
-        alvo_x = -5.8 # A nossa linha de atuação do goleiro
+        # 1. Linha de atuação (Fica um pouco à frente do gol)
+        direcao = 1 if blackboard.our_goal_x > 0 else -1
+        alvo_x = blackboard.our_goal_x - (direcao * 0.2) 
         
-        # 1. A Mágica Matemática: Reta da Bola até o Centro do Gol (-6.0, 0.0)
-        dx = -6.0 - blackboard.ball_pos.x
+        # 2. A Mágica Matemática: Reta da Bola até o Centro do Nosso Gol
+        dx = blackboard.our_goal_x - blackboard.ball_pos.x
         dy = 0.0 - blackboard.ball_pos.y
         
         if abs(dx) > 0.001:
-            # Calculamos a inclinação da reta (m) e projetamos no X do goleiro (-5.8)
             m = dy / dx
-            alvo_y = blackboard.ball_pos.y + m * (-5.8 - blackboard.ball_pos.x)
+            alvo_y = blackboard.ball_pos.y + m * (alvo_x - blackboard.ball_pos.x)
         else:
             alvo_y = 0.0
             
@@ -301,7 +441,7 @@ class ActionZagueiroBloqueio(Node):
             return NodeState.FAILURE
 
         # 1. A Matemática do Arco: Calcula o ângulo da bola até o nosso gol (-6.0, 0.0)
-        dx = blackboard.ball_pos.x - (-6.0)
+        dx = blackboard.ball_pos.x - blackboard.our_goal_x
         dy = blackboard.ball_pos.y - 0.0
         angulo_bola = math.atan2(dy, dx)
         
@@ -309,7 +449,7 @@ class ActionZagueiroBloqueio(Node):
         raio_zaga = 2 
         
         # 2. Ponto alvo no arco
-        alvo_x = -6.0 + raio_zaga * math.cos(angulo_bola)
+        alvo_x = blackboard.our_goal_x + 2.0 * math.cos(angulo_bola)
         alvo_y = 0.0 + raio_zaga * math.sin(angulo_bola)
         
         # Navega com APF
@@ -354,7 +494,7 @@ class ActionZagueiroMarcacao(Node):
                     continue
                 
                 # Ameaça = Quão perto o inimigo está do nosso gol
-                dist_pro_gol = math.hypot(inimigo.pos.x - (-6.0), inimigo.pos.y - 0.0)
+                dist_pro_gol = math.hypot(inimigo.pos.x - blackboard.our_goal_x, inimigo.pos.y - 0.0)
                 if dist_pro_gol < menor_dist:
                     menor_dist = dist_pro_gol
                     inimigo_perigoso = inimigo
