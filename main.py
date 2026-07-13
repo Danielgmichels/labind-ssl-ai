@@ -118,7 +118,7 @@ class ProportionalController:
             
             if is_wall:
                 # PAREDE DE CONCRETO: Empurra muito forte e de mais longe
-                dist_segura_atual = 0.90  # Sente a parede a 40cm de distância
+                dist_segura_atual = 0.70  # Sente a parede a 40cm de distância
                 kr_atual = 3.0            # Força brutal (ignora a atração da bola)
                 fator_foco_atual = 1.0    # Sempre empurra com 100% de prioridade
             else:
@@ -256,6 +256,11 @@ class Blackboard:
         self.my_pos = None    
         self.ball_pos = None  
         self.obstacles = []   
+
+        self.ball_vel_x = 0.0
+        self.ball_vel_y = 0.0
+        self.last_ball_pos = None
+        self.last_ball_time = time.time()
         
         # O Muro Físico das áreas gerado apenas uma vez
         self.defense_walls = create_solid_defense_walls() 
@@ -345,6 +350,8 @@ def maestro_distribui_papeis(team_robots, ball_pos, enemy_goal_x, last_roles=Non
             papel_antigo = last_roles.get(r_id, "")
             if papel_antigo == "ATACANTE_APOIO":
                 dist_gol_inimigo -= 2.0 
+            elif papel_antigo == "MEIO_CAMPO": 
+                dist_gol_inimigo -= 1.0 
             elif papel_antigo == "ZAGUEIRO_BLOQUEIO":
                 dist_gol_inimigo += 2.0 
             elif papel_antigo == "ZAGUEIRO_MARCACAO":
@@ -367,7 +374,9 @@ def maestro_distribui_papeis(team_robots, ball_pos, enemy_goal_x, last_roles=Non
     if len(sobra) > 0:
         # Pega o novo ÚLTIMO da lista
         papeis[sobra.pop(-1)[1]] = "ZAGUEIRO_MARCACAO" 
-        
+    
+    if len(sobra) > 0:
+        papeis[sobra.pop(0)[1]] = "MEIO_CAMPO"
     # Quem restou no meio-campo fica na reserva
     for s in sobra:
         papeis[s[1]] = "ESPERA"
@@ -380,6 +389,12 @@ def build_attacker_tree():
     ramo_emergencia = Sequence([ConditionIsHalted(), ActionStopMotors()])
     ramo_kickoff = Sequence([ConditionIsPrepareKickoff(), ActionPrepareKickoff()])
     
+    # 3.0. O reflexo de Chute de Primeira (Interceptação)
+    chute_de_primeira = Sequence([
+        ConditionIsPassArriving(),
+        ActionOneTimer()
+    ])
+
     # 3.1. Finalizar (O Radar encontrou uma fresta no gol)
     tentar_finalizar = Sequence([
         ConditionIsNearBall(),
@@ -388,7 +403,7 @@ def build_attacker_tree():
         ActionAimAndShoot()
     ])
     
-    # 3.2. NOVO: O Passe! (Gol bloqueado, mas tem parceiro limpo)
+    # 3.2. O Passe! (Gol bloqueado, mas tem parceiro limpo)
     tentar_passe = Sequence([
         ConditionIsNearBall(),
         ConditionIsPassClear(), # Verifica companheiro e linha limpa
@@ -415,6 +430,7 @@ def build_attacker_tree():
     ramo_ofensivo = Sequence([
         ConditionIsGameRunning(),
         Selector([
+            chute_de_primeira,
             tentar_finalizar,
             tentar_passe,   # Tenta o passe antes de decidir andar de lado!
             achar_angulo,   
@@ -474,6 +490,13 @@ def build_goleiro_tree():
     
     return root
 
+def build_meio_campo_tree():
+    return Selector([
+        Sequence([ConditionIsHalted(), ActionStopMotors()]),
+        Sequence([ConditionIsGameRunning(), ActionMidfieldSupport()]),
+        ActionStopMotors() 
+    ])
+
 def build_espera_tree():
     """Árvore genérica para robôs ociosos: apenas desliga os motores."""
     return ActionStopMotors()
@@ -523,6 +546,7 @@ def main():
     arvore_zaga_bloqueio = build_zaga_bloqueio_tree()
     arvore_zaga_marcacao = build_zaga_marcacao_tree()
     arvore_atacante_apoio = build_atacante_apoio_tree()
+    arvore_meio_campo = build_meio_campo_tree()
 
     cycle_time = 1.0 / 60 
     
@@ -554,6 +578,16 @@ def main():
             world = state.last_seen_world
             if world.ball.visible:
                 bb.ball_pos = world.ball.pos
+                
+                # --- NOVO: Calcula a Velocidade Vetorial da Bola ---
+                current_time = time.time()
+                dt = current_time - bb.last_ball_time
+                if bb.last_ball_pos is not None and dt > 0:
+                    bb.ball_vel_x = (bb.ball_pos.x - bb.last_ball_pos.x) / dt
+                    bb.ball_vel_y = (bb.ball_pos.y - bb.last_ball_pos.y) / dt
+                
+                bb.last_ball_pos = bb.ball_pos
+                bb.last_ball_time = current_time
                 
             team_robots = world.yellow if bb.is_yellow else world.blue
             bb.my_pos = next((r for r in team_robots if getattr(r, 'id', 0) == bb.my_id and (abs(r.pos.x) > 0.001 or abs(r.pos.y) > 0.001)), None)
@@ -612,6 +646,8 @@ def main():
                     elif bb.my_role == "ATACANTE_APOIO":
                         arvore_atacante_apoio.tick(bb)
 
+                    elif bb.my_role == "MEIO_CAMPO":
+                        arvore_meio_campo.tick(bb)
 
                     elif bb.my_role == "ZAGUEIRO_BLOQUEIO":
                         arvore_zaga_bloqueio.tick(bb) # Não esqueça de declarar essa árvore no main()!

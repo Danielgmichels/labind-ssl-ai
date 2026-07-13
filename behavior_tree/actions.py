@@ -310,6 +310,57 @@ class ActionPassBall(Node):
         )
         return NodeState.RUNNING
     
+
+class ActionOneTimer(Node):
+    """Intercepta a bola em movimento e chuta de primeira (One-Timer)."""
+    def tick(self, blackboard):
+        if blackboard.my_pos is None or blackboard.ball_pos is None:
+            return NodeState.FAILURE
+            
+        # 1. Interceptação (Projeção Vetorial)
+        speed = math.hypot(blackboard.ball_vel_x, blackboard.ball_vel_y)
+        if speed > 0:
+            nx = blackboard.ball_vel_x / speed
+            ny = blackboard.ball_vel_y / speed
+        else:
+            nx, ny = 0, 0
+            
+        # Distância entre o robô e a bola
+        dx = blackboard.my_pos.pos.x - blackboard.ball_pos.x
+        dy = blackboard.my_pos.pos.y - blackboard.ball_pos.y
+        
+        # Projeta a posição do robô na reta da bola para achar o ponto mais próximo
+        t = dx * nx + dy * ny 
+        
+        intercept_x = blackboard.ball_pos.x + nx * t
+        intercept_y = blackboard.ball_pos.y + ny * t
+        
+        # 2. Navega para a linha de interceptação
+        vf, vl, _ = blackboard.controller.calculate_velocity(
+            blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw, 
+            intercept_x, intercept_y, blackboard.obstacles
+        )
+        
+        # 3. Gira mirando para o GOL INIMIGO (Não para a bola!)
+        gol_inimigo_x = blackboard.enemy_goal_x
+        gol_inimigo_y = getattr(blackboard, 'best_shot_y', 0.0) 
+        
+        target_angle = math.atan2(gol_inimigo_y - blackboard.my_pos.pos.y, 
+                                  gol_inimigo_x - blackboard.my_pos.pos.x)
+        erro_angular = target_angle - blackboard.my_pos.yaw
+        erro_angular = (erro_angular + math.pi) % (2 * math.pi) - math.pi
+        
+        vw = erro_angular * blackboard.controller.kp_angular
+        vw = max(min(vw, blackboard.controller.max_angular_vel), -blackboard.controller.max_angular_vel)
+        
+        # 4. O Gatilho de Primeira!
+        # Velocidade máxima no chutador. Quando a bola encostar na boca do robô, será um tiro!
+        blackboard.action.send_command(
+            robot_id=blackboard.my_id, v_forward=vf, v_left=vl, vw=vw,
+            kick_speed=6.0, dribbler_speed=1500.0
+        )
+        return NodeState.RUNNING
+    
 # ==========================================
 # GOLEIRO
 # ==========================================
@@ -539,5 +590,64 @@ class ActionZagueiroMarcacao(Node):
         blackboard.action.send_command(
             robot_id=blackboard.my_id, v_forward=vf, v_left=vl, vw=vw,
             kick_speed=0.0, dribbler_speed=0.0
+        )
+        return NodeState.RUNNING
+    
+# ==========================================
+# MEIO CAMPISTA
+# ==========================================
+
+class ActionMidfieldSupport(Node):
+    """
+    O Meio-Campista (Volante). Fica entre a zaga e o ataque.
+    Acompanha a linha da bola de longe para pegar rebotes e cortar passes.
+    """
+    def tick(self, blackboard):
+        if blackboard.my_pos is None or blackboard.ball_pos is None:
+            return NodeState.FAILURE
+
+        direcao = 1 if blackboard.enemy_goal_x > 0 else -1
+
+        # 1. A Matemática do Posicionamento (O Ponto de Rebote)
+        # O meio-campista quer ficar 1.5 metros atrás da linha da bola
+        alvo_x = blackboard.ball_pos.x - (direcao * 1.5)
+
+        # 2. As "Cercas" Invisíveis (Geofencing)
+        # Ele não pode invadir a área da nossa zaga nem a banheira do ataque
+        limite_defesa = blackboard.our_goal_x + (direcao * 2.5)
+        limite_ataque = blackboard.enemy_goal_x - (direcao * 2.5)
+
+        # Mantém o X estritamente dentro da zona de meio-campo
+        if direcao > 0:
+            alvo_x = max(limite_defesa, min(alvo_x, limite_ataque))
+        else:
+            alvo_x = max(limite_ataque, min(alvo_x, limite_defesa))
+
+        # No eixo Y, ele centraliza a jogada. Acompanha a bola, mas de forma suavizada (* 0.5)
+        # Isso garante que ele fique no centro interceptando, em vez de correr para as laterais
+        alvo_y = blackboard.ball_pos.y * 0.5
+
+        # 3. Navega com o nosso APF
+        vf, vl, vw = blackboard.controller.calculate_velocity(
+            blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw, 
+            alvo_x, alvo_y, blackboard.obstacles
+        )
+        
+        # 4. Gira encarando a bola a todo momento (Radar ativo)
+        target_angle = math.atan2(blackboard.ball_pos.y - blackboard.my_pos.pos.y, 
+                                  blackboard.ball_pos.x - blackboard.my_pos.pos.x)
+        erro_angular = target_angle - blackboard.my_pos.yaw
+        erro_angular = (erro_angular + math.pi) % (2 * math.pi) - math.pi
+        
+        if abs(erro_angular) > 0.05:
+            vw = erro_angular * blackboard.controller.kp_angular
+            vw = max(min(vw, blackboard.controller.max_angular_vel), -blackboard.controller.max_angular_vel)
+        else:
+            vw = 0.0
+
+        # Envia o comando (Deixa o driblador levemente ligado para matar a bola se ela espirrar nele)
+        blackboard.action.send_command(
+            robot_id=blackboard.my_id, v_forward=vf, v_left=vl, vw=vw,
+            kick_speed=0.0, dribbler_speed=500.0
         )
         return NodeState.RUNNING

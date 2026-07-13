@@ -192,6 +192,39 @@ class ConditionIsPassClear(Node):
             
         return NodeState.FAILURE
     
+class ConditionIsPassArriving(Node):
+    """Retorna SUCCESS se a bola estiver rápida e vindo na direção do robô."""
+    def tick(self, blackboard):
+        if blackboard.my_pos is None or blackboard.ball_pos is None:
+            return NodeState.FAILURE
+            
+        speed = math.hypot(blackboard.ball_vel_x, blackboard.ball_vel_y)
+        if speed < 0.6: # Bola lenta demais, compensa dominar normal
+            return NodeState.FAILURE
+            
+        # Vetor do robô apontando para a bola
+        dx_robo = blackboard.my_pos.pos.x - blackboard.ball_pos.x
+        dy_robo = blackboard.my_pos.pos.y - blackboard.ball_pos.y
+        dist_robo = math.hypot(dx_robo, dy_robo)
+        
+        if dist_robo == 0 or dist_robo > 3.0: 
+            return NodeState.FAILURE # Longe demais da jogada
+            
+        # Produto Escalar (Dot Product) para saber se a bola vem na nossa direção
+        nx_bola = blackboard.ball_vel_x / speed
+        ny_bola = blackboard.ball_vel_y / speed
+        
+        nx_robo = dx_robo / dist_robo
+        ny_robo = dy_robo / dist_robo
+        
+        dot_product = (nx_bola * nx_robo) + (ny_bola * ny_robo)
+        
+        # Se for > 0.7, a trajetória da bola aponta diretamente (cone de ~45º) para o robô!
+        if dot_product > 0.7: 
+            return NodeState.SUCCESS
+            
+        return NodeState.FAILURE
+    
 # ==========================================
 # NÓS DE CONDIÇÃO (goleiro)
 # ==========================================
