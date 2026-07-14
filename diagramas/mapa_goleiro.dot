@@ -1,0 +1,19 @@
+digraph BehaviorTree {
+    bgcolor="#1a1a1a";
+    node [shape=box, style="filled,rounded", fontname="Arial", color="#000000", penwidth=1];
+    "140167814528448" [label="Selector", fillcolor="#121212", fontcolor="white"];
+    "140167814528448" -> "140167814528064" [color="#888888"];
+    "140167814528064" [label="Sequence", fillcolor="#121212", fontcolor="white"];
+    "140167814528064" -> "140167814527968" [color="#888888"];
+    "140167814527968" [label="ConditionIsHalted", fillcolor="#2d2d2d", fontcolor="white"];
+    "140167814528064" -> "140167814528016" [color="#888888"];
+    "140167814528016" [label="ActionStopMotors", fillcolor="#722F37", fontcolor="white"];
+    "140167814528448" -> "140167814528304" [color="#888888"];
+    "140167814528304" [label="Sequence", fillcolor="#121212", fontcolor="white"];
+    "140167814528304" -> "140167814528160" [color="#888888"];
+    "140167814528160" [label="ConditionIsBallSafeToClear", fillcolor="#2d2d2d", fontcolor="white"];
+    "140167814528304" -> "140167814528256" [color="#888888"];
+    "140167814528256" [label="ActionClearBall", fillcolor="#722F37", fontcolor="white"];
+    "140167814528448" -> "140167814528400" [color="#888888"];
+    "140167814528400" [label="ActionDefendGoal", fillcolor="#722F37", fontcolor="white"];
+}

@@ -1,0 +1,27 @@
+digraph BehaviorTree {
+    bgcolor="#1a1a1a";
+    node [shape=box, style="filled,rounded", fontname="Arial", color="#000000", penwidth=1];
+    "140167814632816" [label="Selector", fillcolor="#121212", fontcolor="white"];
+    "140167814632816" -> "140167814632672" [color="#888888"];
+    "140167814632672" [label="Sequence", fillcolor="#121212", fontcolor="white"];
+    "140167814632672" -> "140167814627872" [color="#888888"];
+    "140167814627872" [label="ConditionIsHalted", fillcolor="#2d2d2d", fontcolor="white"];
+    "140167814632672" -> "140167814632624" [color="#888888"];
+    "140167814632624" [label="ActionStopMotors", fillcolor="#722F37", fontcolor="white"];
+    "140167814632816" -> "140167814627680" [color="#888888"];
+    "140167814627680" [label="Sequence", fillcolor="#121212", fontcolor="white"];
+    "140167814627680" -> "140167814627488" [color="#888888"];
+    "140167814627488" [label="ConditionIsGameRunning", fillcolor="#2d2d2d", fontcolor="white"];
+    "140167814627680" -> "140167814627776" [color="#888888"];
+    "140167814627776" [label="Selector", fillcolor="#121212", fontcolor="white"];
+    "140167814627776" -> "140167814627584" [color="#888888"];
+    "140167814627584" [label="Sequence", fillcolor="#121212", fontcolor="white"];
+    "140167814627584" -> "140167814627920" [color="#888888"];
+    "140167814627920" [label="ConditionIsPassArriving", fillcolor="#2d2d2d", fontcolor="white"];
+    "140167814627584" -> "140167814627968" [color="#888888"];
+    "140167814627968" [label="ActionInterceptPass", fillcolor="#722F37", fontcolor="white"];
+    "140167814627776" -> "140167814627536" [color="#888888"];
+    "140167814627536" [label="ActionPositionForPass", fillcolor="#722F37", fontcolor="white"];
+    "140167814632816" -> "140167814632768" [color="#888888"];
+    "140167814632768" [label="ActionStopMotors", fillcolor="#722F37", fontcolor="white"];
+}

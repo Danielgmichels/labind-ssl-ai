@@ -1,3 +1,4 @@
+import os
 from enum import Enum
 
 # ==========================================
@@ -75,4 +76,48 @@ class Sequence(Composite):
                 
         # Se o for terminar, significa que todos os filhos retornaram SUCCESS
         return NodeState.SUCCESS
-  
+
+def export_tree_to_dot(node, filename="arvore_tatica.dot"):
+    """Gera um arquivo Graphviz com um tema escuro e paleta personalizada."""
+    def _write_dot_node(current_node, file):
+        node_id = id(current_node)
+        name = current_node.__class__.__name__
+
+        # Define a cor baseada no tipo do nó (A Mágica das Cores)
+        if name.startswith('Action'):
+            # Ações (O "músculo" do robô): Fundo Vermelho Vinho
+            fillcolor = "#722F37"
+            fontcolor = "white"
+        elif name.startswith('Condition'):
+            # Condições (O "radar"): Preto mais clarinho / Cinza Escuro
+            fillcolor = "#2d2d2d"
+            fontcolor = "white"
+        else:
+            # Nós de Controle (Selector / Sequence): Preto puro
+            fillcolor = "#121212"
+            fontcolor = "white"
+
+        # Desenha a caixinha do nó com bordas arredondadas
+        file.write(f'    "{node_id}" [label="{name}", fillcolor="{fillcolor}", fontcolor="{fontcolor}"];\n')
+
+        # Se tiver filhos, desenha as setas conectando
+        if hasattr(current_node, 'children'):
+            for child in current_node.children:
+                child_id = id(child)
+                file.write(f'    "{node_id}" -> "{child_id}" [color="#888888"];\n')
+                _write_dot_node(child, file)
+
+    diretorio = os.path.dirname(filename)
+    if diretorio: # Só tenta criar se houver uma pasta especificada
+        os.makedirs(diretorio, exist_ok=True)
+
+    # Abre o arquivo e escreve a estrutura do Graphviz
+    with open(filename, 'w', encoding='utf-8') as f:
+        f.write("digraph BehaviorTree {\n")
+        # Configurações do fundo escuro
+        f.write('    bgcolor="#1a1a1a";\n')
+        f.write('    node [shape=box, style="filled,rounded", fontname="Arial", color="#000000", penwidth=1];\n')
+        _write_dot_node(node, f)
+        f.write("}\n")
+        
+    print(f"Árvore exportada com sucesso para {filename}!")

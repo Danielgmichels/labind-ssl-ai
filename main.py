@@ -71,8 +71,8 @@ class ProportionalController:
         self.max_angular_vel = max_angular_vel
         
         # Valores drasticamente reduzidos para suportar o campo lotado (12 robôs)
-        self.dist_segura = 0.12  # Raio do robô + folga mínima
-        self.kr_repulsao = 0.005  # Repulsão base muito mais suave
+        self.dist_segura = 0.16  # Raio do robô + folga mínima
+        self.kr_repulsao = 0.015  # Repulsão base muito mais suave
 
     def calculate_velocity(self, robot_x, robot_y, robot_yaw, ball_x, ball_y, obstacles):
         # 1. FORÇA DE ATRAÇÃO
@@ -346,38 +346,38 @@ def maestro_distribui_papeis(team_robots, ball_pos, enemy_goal_x, last_roles=Non
         if r_id not in papeis and (abs(r.pos.x) >= 0.001 or abs(r.pos.y) >= 0.001):
             dist_gol_inimigo = math.hypot(r.pos.x - enemy_goal_x, r.pos.y - 0.0)
             
-            # CORREÇÃO 2: Histerese correta para a defesa não "pular"
             papel_antigo = last_roles.get(r_id, "")
-            if papel_antigo == "ATACANTE_APOIO":
-                dist_gol_inimigo -= 2.0 
-            elif papel_antigo == "MEIO_CAMPO": 
-                dist_gol_inimigo -= 1.0 
-            elif papel_antigo == "ZAGUEIRO_BLOQUEIO":
-                dist_gol_inimigo += 2.0 
-            elif papel_antigo == "ZAGUEIRO_MARCACAO":
-                dist_gol_inimigo += 1.0 
+            if papel_antigo == "ATACANTE_REBOTE":    dist_gol_inimigo -= 2.5 
+            elif papel_antigo == "ATACANTE_APOIO":   dist_gol_inimigo -= 2.0 
+            elif papel_antigo == "MEIA_ARMADOR":     dist_gol_inimigo -= 1.5
+            elif papel_antigo == "LATERAL_ESQUERDO": dist_gol_inimigo -= 1.0 
+            elif papel_antigo == "LATERAL_DIREITO":  dist_gol_inimigo -= 1.0 
+            elif papel_antigo == "MEIO_CAMPO":       dist_gol_inimigo -= 0.5 
+            elif papel_antigo == "VOLANTE":          dist_gol_inimigo += 0.5 
+            elif papel_antigo == "ZAGUEIRO_MARCACAO":dist_gol_inimigo += 1.5 
+            elif papel_antigo == "ZAGUEIRO_BLOQUEIO":dist_gol_inimigo += 2.5 
                 
             sobra.append((dist_gol_inimigo, r_id))
+
             
-    # Ordena a lista: [Mais Perto do Inimigo ... Mais Perto do Nosso Gol]
+    # Ordena: [0] é o mais perto do gol inimigo, [-1] é o mais perto do nosso gol
     sobra.sort(key=lambda x: x[0])
     
-    # CORREÇÃO 3: Distribuição limpa usando pop()
-    if len(sobra) > 0:
-        # Pega o primeiro da lista (Mais Avançado)
-        papeis[sobra.pop(0)[1]] = "ATACANTE_APOIO" 
+    # 1. LINHA DE FRENTE (Os 3 mais avançados)
+    if len(sobra) > 0: papeis[sobra.pop(0)[1]] = "ATACANTE_REBOTE" 
+    if len(sobra) > 0: papeis[sobra.pop(0)[1]] = "ATACANTE_APOIO" 
+    if len(sobra) > 0: papeis[sobra.pop(0)[1]] = "MEIA_ARMADOR" 
         
-    if len(sobra) > 0:
-        # Pega o ÚLTIMO da lista (Mais Recuado)
-        papeis[sobra.pop(-1)[1]] = "ZAGUEIRO_BLOQUEIO" 
+    # 2. RETRANCA (Os 3 mais recuados)
+    if len(sobra) > 0: papeis[sobra.pop(-1)[1]] = "ZAGUEIRO_BLOQUEIO" 
+    if len(sobra) > 0: papeis[sobra.pop(-1)[1]] = "ZAGUEIRO_MARCACAO" 
+    if len(sobra) > 0: papeis[sobra.pop(-1)[1]] = "VOLANTE"
         
-    if len(sobra) > 0:
-        # Pega o novo ÚLTIMO da lista
-        papeis[sobra.pop(-1)[1]] = "ZAGUEIRO_MARCACAO" 
-    
-    if len(sobra) > 0:
-        papeis[sobra.pop(0)[1]] = "MEIO_CAMPO"
-    # Quem restou no meio-campo fica na reserva
+    # 3. MIOLO DO CAMPO E LATERAIS (Os 3 que restaram no meio da lista)
+    if len(sobra) > 0: papeis[sobra.pop(0)[1]] = "LATERAL_ESQUERDO"
+    if len(sobra) > 0: papeis[sobra.pop(0)[1]] = "LATERAL_DIREITO"
+    if len(sobra) > 0: papeis[sobra.pop(0)[1]] = "MEIO_CAMPO"
+        
     for s in sobra:
         papeis[s[1]] = "ESPERA"
         
@@ -389,10 +389,10 @@ def build_attacker_tree():
     ramo_emergencia = Sequence([ConditionIsHalted(), ActionStopMotors()])
     ramo_kickoff = Sequence([ConditionIsPrepareKickoff(), ActionPrepareKickoff()])
     
-    # 3.0. O reflexo de Chute de Primeira (Interceptação)
-    chute_de_primeira = Sequence([
+    # 3.0. O reflexo de Recepção de Passe
+    receber_passe = Sequence([
         ConditionIsPassArriving(),
-        ActionOneTimer()
+        ActionInterceptPass() # <--- Nome atualizado
     ])
 
     # 3.1. Finalizar (O Radar encontrou uma fresta no gol)
@@ -420,7 +420,7 @@ def build_attacker_tree():
     # 3.4. Conduzir 
     tentar_conduzir = Sequence([
         ConditionIsNearBall(),
-        ActionDribbleToGoal()
+        ActionSmartDribble()
     ])
     
     # 3.5. Buscar 
@@ -430,7 +430,7 @@ def build_attacker_tree():
     ramo_ofensivo = Sequence([
         ConditionIsGameRunning(),
         Selector([
-            chute_de_primeira,
+            receber_passe,
             tentar_finalizar,
             tentar_passe,   # Tenta o passe antes de decidir andar de lado!
             achar_angulo,   
@@ -443,10 +443,27 @@ def build_attacker_tree():
     return root
 
 def build_atacante_apoio_tree():
+    """Árvore do Atacante de Apoio com reflexo de recepção."""
+    
+    # Se a bola vier como um tiro na direção dele, ele ignora a posição e intercepta!
+    receber_passe = Sequence([
+        ConditionIsPassArriving(),
+        ActionInterceptPass() 
+    ])
+    
+    # Agrupa o comportamento ofensivo
+    ramo_ofensivo = Sequence([
+        ConditionIsGameRunning(),
+        Selector([
+            receber_passe,          # 1º: Vem passe? Agarra!
+            ActionPositionForPass() # 2º: Não vem? Vai para o espaço vazio.
+        ])
+    ])
+    
     return Selector([
         Sequence([ConditionIsHalted(), ActionStopMotors()]),
-        Sequence([ConditionIsGameRunning(), ActionPositionForPass()]),
-        ActionStopMotors() # Fallback: Se o jogo não tá valendo, FREIA O ROBÔ!
+        ramo_ofensivo,
+        ActionStopMotors() 
     ])
 
 def build_zaga_bloqueio_tree():
@@ -495,6 +512,31 @@ def build_meio_campo_tree():
         Sequence([ConditionIsHalted(), ActionStopMotors()]),
         Sequence([ConditionIsGameRunning(), ActionMidfieldSupport()]),
         ActionStopMotors() 
+    ])
+
+def build_centroavante_tree():
+    return Selector([
+        Sequence([ConditionIsHalted(), ActionStopMotors()]), Sequence([ConditionIsGameRunning(), ActionCentroavante()]), ActionStopMotors()])
+
+def build_meia_armador_tree():
+    return Selector([Sequence([ConditionIsHalted(), ActionStopMotors()]), 
+        Sequence([ConditionIsGameRunning(), ActionMeiaArmador()]), 
+        ActionStopMotors()
+    ])
+
+def build_volante_tree():
+    return Selector([
+        Sequence([ConditionIsHalted(), ActionStopMotors()]), 
+        Sequence([ConditionIsGameRunning(), ActionVolanteDefensivo()]), 
+        ActionStopMotors()
+    ])
+
+# O Y vai ser 3.5 (esquerda) e -3.5 (direita) para correr perto da borda
+def build_lateral_tree(lado_y):
+    return Selector([
+        Sequence([ConditionIsHalted(), ActionStopMotors()]), 
+        Sequence([ConditionIsGameRunning(), ActionLateral(lado_y)]), 
+        ActionStopMotors()
     ])
 
 def build_espera_tree():
@@ -547,6 +589,11 @@ def main():
     arvore_zaga_marcacao = build_zaga_marcacao_tree()
     arvore_atacante_apoio = build_atacante_apoio_tree()
     arvore_meio_campo = build_meio_campo_tree()
+    arvore_centroavante = build_centroavante_tree()
+    arvore_meia_armador = build_meia_armador_tree()
+    arvore_volante = build_volante_tree()
+    arvore_lateral_esq = build_lateral_tree(3.5)
+    arvore_lateral_dir = build_lateral_tree(-3.5)
 
     cycle_time = 1.0 / 60 
     
@@ -557,6 +604,14 @@ def main():
     
     # --- NOVO: Timer para o Debug ---
     last_debug_time = time.time()
+
+    # Gera os diagramas visuais!
+    export_tree_to_dot(arvore_atacante, "diagramas/mapa_atacante.dot")
+    export_tree_to_dot(arvore_goleiro, "diagramas/mapa_goleiro.dot")
+    export_tree_to_dot(arvore_zaga_bloqueio, "diagramas/mapa_zagaarvore_zaga_bloqueio.dot")
+    export_tree_to_dot(arvore_zaga_marcacao, "diagramas/mapa_zamaarvore_zaga_marcacao.dot")
+    export_tree_to_dot(arvore_atacante_apoio, "diagramas/mapa_aaparvore_atacante_apoio.dot")
+    export_tree_to_dot(arvore_meio_campo, "diagramas/mapa_meio_campo.dot")
     
     while True:
         start_time = time.time()
@@ -579,12 +634,19 @@ def main():
             if world.ball.visible:
                 bb.ball_pos = world.ball.pos
                 
-                # --- NOVO: Calcula a Velocidade Vetorial da Bola ---
+                # --- Calcula a Velocidade Vetorial da Bola com FILTRO EMA ---
                 current_time = time.time()
                 dt = current_time - bb.last_ball_time
                 if bb.last_ball_pos is not None and dt > 0:
-                    bb.ball_vel_x = (bb.ball_pos.x - bb.last_ball_pos.x) / dt
-                    bb.ball_vel_y = (bb.ball_pos.y - bb.last_ball_pos.y) / dt
+                    # 1. Velocidade Bruta (Cheia de tremedeira da câmera)
+                    vx_raw = (bb.ball_pos.x - bb.last_ball_pos.x) / dt
+                    vy_raw = (bb.ball_pos.y - bb.last_ball_pos.y) / dt
+                    
+                    # 2. O Filtro Mágico (Suaviza os pulos da visão)
+                    # Confia 30% na leitura nova e 70% na inércia da bola
+                    alpha = 0.3 
+                    bb.ball_vel_x = (alpha * vx_raw) + ((1.0 - alpha) * bb.ball_vel_x)
+                    bb.ball_vel_y = (alpha * vy_raw) + ((1.0 - alpha) * bb.ball_vel_y)
                 
                 bb.last_ball_pos = bb.ball_pos
                 bb.last_ball_time = current_time
@@ -655,13 +717,28 @@ def main():
                     elif bb.my_role == "ZAGUEIRO_MARCACAO":
                         arvore_zaga_marcacao.tick(bb)
     
-                    elif bb.my_role == "ESPERA":
-                        arvore_espera.tick(bb)
-                        
                     elif bb.my_role == "GOLEIRO":
                         # Por enquanto, deixa parado até fazermos a árvore dele
                         arvore_goleiro.tick(bb)
+                    
+                    elif bb.my_role == "ATACANTE_REBOTE":   
+                        arvore_centroavante.tick(bb)
 
+                    elif bb.my_role == "MEIA_ARMADOR":      
+                        arvore_meia_armador.tick(bb)
+
+                    elif bb.my_role == "VOLANTE":           
+                        arvore_volante.tick(bb)
+
+                    elif bb.my_role == "LATERAL_ESQUERDO":  
+                        arvore_lateral_esq.tick(bb)
+
+                    elif bb.my_role == "LATERAL_DIREITO":   
+                        arvore_lateral_dir.tick(bb)
+
+                    elif bb.my_role == "ESPERA":
+                        arvore_espera.tick(bb)
+                        
         # ==========================================
         # PAINEL DE DEBUG (Imprime a cada 1 segundo)
         # ==========================================
