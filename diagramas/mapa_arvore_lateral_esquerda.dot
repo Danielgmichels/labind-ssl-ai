@@ -1,0 +1,19 @@
+digraph BehaviorTree {
+    bgcolor="#1a1a1a";
+    node [shape=box, style="filled,rounded", fontname="Arial", color="#000000", penwidth=1];
+    "140578072907776" [label="Selector", fillcolor="#121212", fontcolor="white"];
+    "140578072907776" -> "140578072907392" [color="#888888"];
+    "140578072907392" [label="Sequence", fillcolor="#121212", fontcolor="white"];
+    "140578072907392" -> "140578072907296" [color="#888888"];
+    "140578072907296" [label="ConditionIsHalted", fillcolor="#2d2d2d", fontcolor="white"];
+    "140578072907392" -> "140578072907344" [color="#888888"];
+    "140578072907344" [label="ActionStopMotors", fillcolor="#722F37", fontcolor="white"];
+    "140578072907776" -> "140578072907632" [color="#888888"];
+    "140578072907632" [label="Sequence", fillcolor="#121212", fontcolor="white"];
+    "140578072907632" -> "140578072907488" [color="#888888"];
+    "140578072907488" [label="ConditionIsGameRunning", fillcolor="#2d2d2d", fontcolor="white"];
+    "140578072907632" -> "140578072907536" [color="#888888"];
+    "140578072907536" [label="ActionLateral", fillcolor="#722F37", fontcolor="white"];
+    "140578072907776" -> "140578072907728" [color="#888888"];
+    "140578072907728" [label="ActionStopMotors", fillcolor="#722F37", fontcolor="white"];
+}

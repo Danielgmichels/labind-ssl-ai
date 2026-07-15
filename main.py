@@ -606,12 +606,17 @@ def main():
     last_debug_time = time.time()
 
     # Gera os diagramas visuais!
-    export_tree_to_dot(arvore_atacante, "diagramas/mapa_atacante.dot")
-    export_tree_to_dot(arvore_goleiro, "diagramas/mapa_goleiro.dot")
-    export_tree_to_dot(arvore_zaga_bloqueio, "diagramas/mapa_zagaarvore_zaga_bloqueio.dot")
-    export_tree_to_dot(arvore_zaga_marcacao, "diagramas/mapa_zamaarvore_zaga_marcacao.dot")
-    export_tree_to_dot(arvore_atacante_apoio, "diagramas/mapa_aaparvore_atacante_apoio.dot")
-    export_tree_to_dot(arvore_meio_campo, "diagramas/mapa_meio_campo.dot")
+    export_tree_to_dot(arvore_atacante, "diagramas/mapa_arvore_atacante.dot")
+    export_tree_to_dot(arvore_goleiro, "diagramas/mapa_arvore_goleiro.dot")
+    export_tree_to_dot(arvore_zaga_bloqueio, "diagramas/mapa_arvore_zaga_bloqueio.dot")
+    export_tree_to_dot(arvore_zaga_marcacao, "diagramas/mapa_arvore_zaga_marcacao.dot")
+    export_tree_to_dot(arvore_atacante_apoio, "diagramas/mapa_arvore_atacante_apoio.dot")
+    export_tree_to_dot(arvore_meio_campo, "diagramas/mapa_arvore_meio_campo.dot")
+    export_tree_to_dot(arvore_centroavante, "diagramas/mapa_arvore_centroavante.dot")
+    export_tree_to_dot(arvore_meia_armador, "diagramas/mapa_arvore_meia_armador.dot")
+    export_tree_to_dot(arvore_volante, "diagramas/mapa_arvore_volante.dot")
+    export_tree_to_dot(arvore_lateral_esq, "diagramas/mapa_arvore_lateral_esquerda.dot")
+    export_tree_to_dot(arvore_lateral_dir, "diagramas/mapa_arvore_lateral_direita.dot")
     
     while True:
         start_time = time.time()

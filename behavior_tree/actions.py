@@ -401,45 +401,56 @@ class ActionInterceptPass(Node):
 # GOLEIRO
 # ==========================================
 class ActionDefendGoal(Node):
-    """Fica na linha do gol cortando o ângulo entre a bola e o centro do gol."""
+    """Fica na linha do gol cortando o ângulo, e intercepta chutes rápidos."""
     def tick(self, blackboard):
         if blackboard.my_pos is None or blackboard.ball_pos is None:
             return NodeState.FAILURE
 
-        # 1. Linha de atuação (Fica um pouco à frente do gol)
         direcao = 1 if blackboard.our_goal_x > 0 else -1
+        
+        # 1. Linha de atuação cravada embaixo da trave
         alvo_x = blackboard.our_goal_x - (direcao * 0.2) 
         
-        # 2. A Mágica Matemática: Reta da Bola até o Centro do Nosso Gol
-        dx = blackboard.our_goal_x - blackboard.ball_pos.x
-        dy = 0.0 - blackboard.ball_pos.y
+        # 2. A Mágica da Previsão do Chute
+        # Verifica se temos a velocidade filtrada salva no Blackboard
+        vx = getattr(blackboard, 'ball_vel_x', 0.0)
+        vy = getattr(blackboard, 'ball_vel_y', 0.0)
+        speed = math.hypot(vx, vy)
         
-        if abs(dx) > 0.001:
-            m = dy / dx
+        # A bola está vindo na direção do nosso gol?
+        bola_vindo_pra_nos = (direcao > 0 and vx > 0) or (direcao < 0 and vx < 0)
+        
+        if speed > 0.8 and bola_vindo_pra_nos and abs(vx) > 0.001:
+            # INTERCEPTAÇÃO: Calcula onde a reta do chute vai cruzar a nossa linha do gol
+            m = vy / vx
             alvo_y = blackboard.ball_pos.y + m * (alvo_x - blackboard.ball_pos.x)
         else:
-            alvo_y = 0.0
+            # FECHAR O ÂNGULO: A bola tá lenta ou no ataque, corta a linha pro centro do gol
+            dx = blackboard.our_goal_x - blackboard.ball_pos.x
+            dy = 0.0 - blackboard.ball_pos.y
+            if abs(dx) > 0.001:
+                m = dy / dx
+                alvo_y = blackboard.ball_pos.y + m * (alvo_x - blackboard.ball_pos.x)
+            else:
+                alvo_y = 0.0
             
-        # 2. Trava de Segurança: Não deixa o goleiro sair debaixo das traves
-        alvo_y = max(-0.6, min(alvo_y, 0.6))
+        # 3. Trava de Segurança: Não deixa o goleiro bater nas traves físicas (largura do gol)
+        alvo_y = max(-0.80, min(alvo_y, 0.80))
         
-        # 3. Navega com APF
+        # 4. Navegação 100% focada, ignorando as barreiras da área para o goleiro poder se mexer solto
         vf, vl, vw = blackboard.controller.calculate_velocity(
             blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw, 
-            alvo_x, alvo_y, blackboard.obstacles
+            alvo_x, alvo_y, [] # O Goleiro ignora paredes virtuais!
         )
         
-        # 4. Gira encarando a bola
+        # 5. Gira encarando a bola
         target_angle = math.atan2(blackboard.ball_pos.y - blackboard.my_pos.pos.y, 
                                   blackboard.ball_pos.x - blackboard.my_pos.pos.x)
         erro_angular = target_angle - blackboard.my_pos.yaw
         erro_angular = (erro_angular + math.pi) % (2 * math.pi) - math.pi
         
-        if abs(erro_angular) > 0.05:
-            vw = erro_angular * blackboard.controller.kp_angular
-            vw = max(min(vw, blackboard.controller.max_angular_vel), -blackboard.controller.max_angular_vel)
-        else:
-            vw = 0.0
+        vw = erro_angular * blackboard.controller.kp_angular
+        vw = max(min(vw, blackboard.controller.max_angular_vel), -blackboard.controller.max_angular_vel)
 
         blackboard.action.send_command(
             robot_id=blackboard.my_id, v_forward=vf, v_left=vl, vw=vw,
@@ -522,45 +533,60 @@ class ActionClearBall(Node):
 # ==========================================
 
 class ActionZagueiroBloqueio(Node):
-    """Zagueiro que forma a parede. Fica em um arco de 1.3 metros ao redor do gol."""
+    """Zagueiro que forma a parede, mas que toma iniciativa e isola a bola se ela cair no pé dele."""
     def tick(self, blackboard):
         if blackboard.my_pos is None or blackboard.ball_pos is None:
             return NodeState.FAILURE
 
-        # 1. A Matemática do Arco: Calcula o ângulo da bola até o nosso gol (-6.0, 0.0)
-        dx = blackboard.ball_pos.x - blackboard.our_goal_x
-        dy = blackboard.ball_pos.y - 0.0
-        angulo_bola = math.atan2(dy, dx)
+        # A que distância a bola está de mim agora?
+        dist_bola = math.hypot(blackboard.ball_pos.x - blackboard.my_pos.pos.x, 
+                               blackboard.ball_pos.y - blackboard.my_pos.pos.y)
+                               
+        velocidade_chute = 0.0
+        velocidade_driblador = 0.0
+
+        # 1. INSTINTO DE DEFESA (Bola invadiu a zona de 60cm dele)
+        if dist_bola < 0.60:
+            # Abandona a linha da barreira e ataca a bola de frente!
+            alvo_x = blackboard.ball_pos.x
+            alvo_y = blackboard.ball_pos.y
+            velocidade_driblador = 1500.0 # Liga a boca pra garantir o rebote
+            
+            # Se já engoliu a bola (chegou a 15cm), dá o chutão de alívio pra frente!
+            if dist_bola < 0.15:
+                velocidade_chute = 6.0 
+        else:
+            # 2. A MATEMÁTICA DO ARCO (Comportamento normal da Barreira)
+            dx = blackboard.ball_pos.x - blackboard.our_goal_x
+            dy = blackboard.ball_pos.y - 0.0
+            angulo_bola = math.atan2(dy, dx)
+            
+            raio_zaga = 2.0 # Fica seguro fora da grande área
+            
+            alvo_x = blackboard.our_goal_x + raio_zaga * math.cos(angulo_bola)
+            alvo_y = 0.0 + raio_zaga * math.sin(angulo_bola)
         
-        # O Raio de 1.3 metros mantém o zagueiro de forma segura fora do Geofencing da área
-        raio_zaga = 2 
-        
-        # 2. Ponto alvo no arco
-        alvo_x = blackboard.our_goal_x + 2.0 * math.cos(angulo_bola)
-        alvo_y = 0.0 + raio_zaga * math.sin(angulo_bola)
-        
-        # Navega com APF
-        vf, vl, vw = blackboard.controller.calculate_velocity(
+        # 3. Navegação com APF
+        vf, vl, _ = blackboard.controller.calculate_velocity(
             blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw, 
             alvo_x, alvo_y, blackboard.obstacles
         )
         
-        # 3. Gira encarando a bola para preparar o rebote
+        # 4. Gira sempre encarando a bola para estar pronto pro bote
         target_angle = math.atan2(blackboard.ball_pos.y - blackboard.my_pos.pos.y, 
                                   blackboard.ball_pos.x - blackboard.my_pos.pos.x)
         erro_angular = target_angle - blackboard.my_pos.yaw
         erro_angular = (erro_angular + math.pi) % (2 * math.pi) - math.pi
         
-        if abs(erro_angular) > 0.05:
-            vw = erro_angular * blackboard.controller.kp_angular
-            vw = max(min(vw, blackboard.controller.max_angular_vel), -blackboard.controller.max_angular_vel)
-        else:
-            vw = 0.0
+        vw = erro_angular * blackboard.controller.kp_angular
+        vw = max(min(vw, blackboard.controller.max_angular_vel), -blackboard.controller.max_angular_vel)
 
+        # Envia os comandos (agora injetando o chute e o driblador caso esteja limpando a bola)
         blackboard.action.send_command(
             robot_id=blackboard.my_id, v_forward=vf, v_left=vl, vw=vw,
-            kick_speed=0.0, dribbler_speed=0.0
+            kick_speed=velocidade_chute, dribbler_speed=velocidade_driblador
         )
+        return NodeState.RUNNING
         return NodeState.RUNNING
 
 
