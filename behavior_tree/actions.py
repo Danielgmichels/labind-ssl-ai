@@ -251,25 +251,23 @@ class ActionFindShootingAngle(Node):
     
 class ActionPositionForPass(Node):
     """
-    Corre para a trave oposta de onde a bola está, criando opção de passe.
-    O robô fica estacionado na beirada da área, sempre encarando a bola.
+    Corre para uma das pontas da área para dar opção de passe.
+    Fica cravado no seu lado (Esquerdo ou Direito) para evitar caos no meio-campo.
     """
+    def __init__(self, lado_y):
+        super().__init__()
+        self.lado_y = lado_y
+
     def tick(self, blackboard):
         if blackboard.my_pos is None or blackboard.ball_pos is None:
             return NodeState.FAILURE
 
-        # 1. A Matemática do Espaço Vazio (Cross-Field)
-        # Se a bola está na parte de cima do campo, vamos para a parte de baixo
-        if blackboard.ball_pos.y > 0:
-            alvo_y = -2.5 
-        else:
-            alvo_y = 2.5  
-        
-        # Descobre a direção (1 se positivo, -1 se negativo)
+        # 1. O Alvo
         direcao = 1 if blackboard.enemy_goal_x > 0 else -1
-        # O X será fixado na linha imaginária pouco antes da área inimiga
         alvo_x = blackboard.enemy_goal_x - (direcao * 2.5) 
-
+        
+        # AQUI ESTÁ A CURA DO CAOS: O Y agora é travado no lado do robô!
+        alvo_y = self.lado_y
         
         # 2. Navegação com APF
         vf, vl, vw = blackboard.controller.calculate_velocity(
@@ -277,7 +275,7 @@ class ActionPositionForPass(Node):
             alvo_x, alvo_y, blackboard.obstacles
         )
         
-        # 3. Gira como um radar: Bico SEMPRE apontado para a bola
+        # 3. Gira como um radar (Bico apontado para a bola)
         target_angle = math.atan2(blackboard.ball_pos.y - blackboard.my_pos.pos.y, 
                                   blackboard.ball_pos.x - blackboard.my_pos.pos.x)
         erro_angular = target_angle - blackboard.my_pos.yaw
@@ -290,13 +288,11 @@ class ActionPositionForPass(Node):
             vw = 0.0
             
         # 4. Freio de precisão
-        # Se chegou a 30cm do ponto alvo, zera a velocidade para não ficar tremendo
         dist_alvo = math.hypot(alvo_x - blackboard.my_pos.pos.x, alvo_y - blackboard.my_pos.pos.y)
         if dist_alvo < 0.3:
             vf = 0.0
             vl = 0.0
 
-        # Envia comando com o driblador ligado por segurança (se a bola sobrar, ele gruda!)
         blackboard.action.send_command(
             robot_id=blackboard.my_id, v_forward=vf, v_left=vl, vw=vw,
             kick_speed=0.0, dribbler_speed=1500.0 
@@ -714,28 +710,6 @@ class ActionMidfieldSupport(Node):
         )
         return NodeState.RUNNING
 
-# ==========================================
-# CENTROAVANTE
-# ==========================================  
-class ActionCentroavante(Node):
-    """Fica plantado na entrada da área inimiga (A famosa 'banheira') esperando rebotes."""
-    def tick(self, blackboard):
-        if blackboard.my_pos is None or blackboard.ball_pos is None: return NodeState.FAILURE
-        direcao = 1 if blackboard.enemy_goal_x > 0 else -1
-        
-        # Cravado 1.5 metros à frente do gol inimigo
-        alvo_x = blackboard.enemy_goal_x - (direcao * 2.5)
-        # Acompanha a bola no eixo Y, mas não sai do centro do gol (largura da área)
-        alvo_y = max(-1.5, min(blackboard.ball_pos.y, 1.5))
-
-        vf, vl, vw = blackboard.controller.calculate_velocity(
-            blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw, alvo_x, alvo_y, blackboard.obstacles)
-        
-        # Gira para encarar a bola
-        vw = blackboard.controller.kp_angular * ((math.atan2(blackboard.ball_pos.y - blackboard.my_pos.pos.y, blackboard.ball_pos.x - blackboard.my_pos.pos.x) - blackboard.my_pos.yaw + math.pi) % (2 * math.pi) - math.pi)
-        
-        blackboard.action.send_command(robot_id=blackboard.my_id, v_forward=vf, v_left=vl, vw=max(min(vw, 5.0), -5.0), kick_speed=0.0, dribbler_speed=500.0)
-        return NodeState.RUNNING
 
 # ==========================================
 # MEIO ARMADOR
@@ -804,4 +778,192 @@ class ActionLateral(Node):
         vw = blackboard.controller.kp_angular * ((math.atan2(blackboard.ball_pos.y - blackboard.my_pos.pos.y, blackboard.ball_pos.x - blackboard.my_pos.pos.x) - blackboard.my_pos.yaw + math.pi) % (2 * math.pi) - math.pi)
         
         blackboard.action.send_command(robot_id=blackboard.my_id, v_forward=vf, v_left=vl, vw=max(min(vw, 5.0), -5.0), kick_speed=0.0, dribbler_speed=0.0)
+        return NodeState.RUNNING
+    
+
+# ==========================================
+# Parede bola parada
+# ==========================================
+class ActionFormDefensiveWall(Node):
+    """
+    Forma uma barreira perfeitamente alinhada entre a bola e o nosso gol.
+    Respeita a regra da SSL de manter no mínimo 500mm (0.5m) de distância.
+    """
+    def __init__(self, offset_lateral=0.0):
+        super().__init__()
+        # 0.0 (Centro), positivo (Direita), negativo (Esquerda)
+        self.offset_lateral = offset_lateral 
+
+    def tick(self, blackboard):
+        if blackboard.my_pos is None or blackboard.ball_pos is None:
+            return NodeState.FAILURE
+
+        # 1. Reta da bola em direção ao centro do NOSSO gol
+        dx = blackboard.our_goal_x - blackboard.ball_pos.x
+        dy = 0.0 - blackboard.ball_pos.y
+        dist_pro_gol = math.hypot(dx, dy)
+
+        if dist_pro_gol == 0: dist_pro_gol = 1
+
+        # Vetor unitário apontando da bola pro nosso gol
+        nx = dx / dist_pro_gol
+        ny = dy / dist_pro_gol
+
+        # 2. O Centro da Barreira (Fica a 60cm da bola para garantir a regra)
+        centro_x = blackboard.ball_pos.x + nx * 0.90
+        centro_y = blackboard.ball_pos.y + ny * 0.90
+
+        # 3. Espalhamento Lateral (Vetor perpendicular)
+        # Se o vetor frontal é (nx, ny), o perpendicular é (-ny, nx)
+        perp_x = -ny
+        perp_y = nx
+
+        # Aplica o espaçamento para criar o "muro"
+        alvo_x = centro_x + (perp_x * self.offset_lateral)
+        alvo_y = centro_y + (perp_y * self.offset_lateral)
+
+        # 4. Navegação usando nosso APF
+        vf, vl, _ = blackboard.controller.calculate_velocity(
+            blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw, 
+            alvo_x, alvo_y, blackboard.obstacles
+        )
+        
+        # 5. Gira cravado encarando a bola para preparar o rebote
+        target_angle = math.atan2(blackboard.ball_pos.y - blackboard.my_pos.pos.y, 
+                                  blackboard.ball_pos.x - blackboard.my_pos.pos.x)
+        erro_angular = target_angle - blackboard.my_pos.yaw
+        erro_angular = (erro_angular + math.pi) % (2 * math.pi) - math.pi
+        
+        vw = erro_angular * blackboard.controller.kp_angular
+        vw = max(min(vw, blackboard.controller.max_angular_vel), -blackboard.controller.max_angular_vel)
+
+        blackboard.action.send_command(
+            robot_id=blackboard.my_id, v_forward=vf, v_left=vl, vw=vw,
+            kick_speed=0.0, dribbler_speed=0.0
+        )
+        return NodeState.RUNNING
+    
+class ActionMarkEnemy(Node):
+    """Marcação individual: Escolhe o N-ésimo inimigo mais perigoso e gruda nele."""
+    def __init__(self, indice_inimigo):
+        super().__init__()
+        self.indice_inimigo = indice_inimigo
+
+    def tick(self, blackboard):
+        if blackboard.my_pos is None or blackboard.ball_pos is None:
+            return NodeState.FAILURE
+
+        # Fallback: Fica parado onde está se não achar o inimigo
+        alvo_x = blackboard.my_pos.pos.x
+        alvo_y = blackboard.my_pos.pos.y
+
+        if hasattr(blackboard, 'enemies'):
+            # Filtra inimigos válidos (ignora fantasmas)
+            inimigos_validos = [e for e in blackboard.enemies if (abs(e.pos.x) > 0.001 or abs(e.pos.y) > 0.001)]
+            
+            # Ordena pelo perigo (quem está mais perto do nosso gol)
+            inimigos_validos.sort(key=lambda e: math.hypot(e.pos.x - blackboard.our_goal_x, e.pos.y - 0.0))
+            
+            if len(inimigos_validos) > self.indice_inimigo:
+                inimigo_alvo = inimigos_validos[self.indice_inimigo]
+                
+                # Posiciona-se 45cm à frente do inimigo, cortando a linha direta de passe da bola
+                dx_bola = blackboard.ball_pos.x - inimigo_alvo.pos.x
+                dy_bola = blackboard.ball_pos.y - inimigo_alvo.pos.y
+                dist_inimigo_bola = math.hypot(dx_bola, dy_bola)
+                
+                if dist_inimigo_bola > 0:
+                    alvo_x = inimigo_alvo.pos.x + (dx_bola / dist_inimigo_bola) * 0.45
+                    alvo_y = inimigo_alvo.pos.y + (dy_bola / dist_inimigo_bola) * 0.45
+
+        # PROTEÇÃO RIGOROSA DA REGRA DA SSL (Garante no mínimo 70cm da bola)
+        dist_bola = math.hypot(blackboard.ball_pos.x - alvo_x, blackboard.ball_pos.y - alvo_y)
+        if dist_bola < 0.70:
+            dx_fuga = alvo_x - blackboard.ball_pos.x
+            dy_fuga = alvo_y - blackboard.ball_pos.y
+            angle = math.atan2(dy_fuga, dx_fuga) if dist_bola > 0.001 else 0.0
+            alvo_x = blackboard.ball_pos.x + math.cos(angle) * 0.70
+            alvo_y = blackboard.ball_pos.y + math.sin(angle) * 0.70
+
+        # Navega com APF
+        vf, vl, _ = blackboard.controller.calculate_velocity(
+            blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw, 
+            alvo_x, alvo_y, blackboard.obstacles
+        )
+        
+        # Gira encarando a bola a todo momento (Radar ativo)
+        target_angle = math.atan2(blackboard.ball_pos.y - blackboard.my_pos.pos.y, 
+                                  blackboard.ball_pos.x - blackboard.my_pos.pos.x)
+        erro_angular = target_angle - blackboard.my_pos.yaw
+        erro_angular = (erro_angular + math.pi) % (2 * math.pi) - math.pi
+        
+        vw = erro_angular * blackboard.controller.kp_angular
+        vw = max(min(vw, blackboard.controller.max_angular_vel), -blackboard.controller.max_angular_vel)
+
+        blackboard.action.send_command(
+            robot_id=blackboard.my_id, v_forward=vf, v_left=vl, vw=vw,
+            kick_speed=0.0, dribbler_speed=0.0
+        )
+        return NodeState.RUNNING
+    
+class ActionPositionForShortPass(Node):
+    """Fica a uma distância fixa da bola, abrindo um ângulo nas costas da barreira."""
+    def __init__(self, angulo_graus, distancia=1.5):
+        super().__init__()
+        self.angulo_rad = math.radians(angulo_graus)
+        self.distancia = distancia
+
+    def tick(self, blackboard):
+        if blackboard.my_pos is None or blackboard.ball_pos is None: return NodeState.FAILURE
+        direcao = 1 if blackboard.enemy_goal_x > 0 else -1
+        
+        # Cria um arco em volta da bola. 0 graus aponta para o nosso gol de defesa.
+        angulo_base = math.atan2(0.0 - blackboard.ball_pos.y, blackboard.our_goal_x - blackboard.ball_pos.x)
+        angulo_final = angulo_base + self.angulo_rad
+        
+        alvo_x = blackboard.ball_pos.x + (math.cos(angulo_final) * self.distancia)
+        alvo_y = blackboard.ball_pos.y + (math.sin(angulo_final) * self.distancia)
+
+        vf, vl, _ = blackboard.controller.calculate_velocity(
+            blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw, alvo_x, alvo_y, blackboard.obstacles)
+        
+        # Gira para olhar para a bola, pronto para o passe (Domínio magnético)
+        target_angle = math.atan2(blackboard.ball_pos.y - blackboard.my_pos.pos.y, blackboard.ball_pos.x - blackboard.my_pos.pos.x)
+        erro_angular = target_angle - blackboard.my_pos.yaw
+        erro_angular = (erro_angular + math.pi) % (2 * math.pi) - math.pi
+        
+        vw = erro_angular * blackboard.controller.kp_angular
+        blackboard.action.send_command(
+            robot_id=blackboard.my_id, v_forward=vf, v_left=vl, vw=max(min(vw, 5.0), -5.0),
+            kick_speed=0.0, dribbler_speed=1500.0 # Já deixa o driblador ligado!
+        )
+        return NodeState.RUNNING
+
+class ActionPositionForCross(Node):
+    """Invade a entrada da grande área adversária esperando o cruzamento."""
+    def __init__(self, y_offset):
+        super().__init__()
+        self.y_offset = y_offset
+
+    def tick(self, blackboard):
+        if blackboard.my_pos is None or blackboard.ball_pos is None: return NodeState.FAILURE
+        direcao = 1 if blackboard.enemy_goal_x > 0 else -1
+        
+        # Fica plantado a 2.5 metros da linha do gol inimigo
+        alvo_x = blackboard.enemy_goal_x - (direcao * 2.5)
+        alvo_y = self.y_offset
+
+        vf, vl, _ = blackboard.controller.calculate_velocity(
+            blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw, alvo_x, alvo_y, blackboard.obstacles)
+        
+        # Gira acompanhando a bola
+        target_angle = math.atan2(blackboard.ball_pos.y - blackboard.my_pos.pos.y, blackboard.ball_pos.x - blackboard.my_pos.pos.x)
+        erro_angular = target_angle - blackboard.my_pos.yaw
+        erro_angular = (erro_angular + math.pi) % (2 * math.pi) - math.pi
+        
+        vw = erro_angular * blackboard.controller.kp_angular
+        blackboard.action.send_command(
+            robot_id=blackboard.my_id, v_forward=vf, v_left=vl, vw=max(min(vw, 5.0), -5.0),
+            kick_speed=0.0, dribbler_speed=1500.0
+        )
         return NodeState.RUNNING

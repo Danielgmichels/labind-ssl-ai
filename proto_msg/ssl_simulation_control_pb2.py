@@ -22,7 +22,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='',
   syntax='proto2',
   serialized_options=_b('Z6github.com/RoboCup-SSL/ssl-simulation-protocol/pkg/sim'),
-  serialized_pb=_b('\n\x1cssl_simulation_control.proto\x1a\x13ssl_gc_common.proto\x1a\x1bssl_simulation_config.proto\x1a\x1assl_simulation_error.proto\"\xa1\x01\n\x0cTeleportBall\x12\t\n\x01x\x18\x01 \x01(\x02\x12\t\n\x01y\x18\x02 \x01(\x02\x12\t\n\x01z\x18\x03 \x01(\x02\x12\n\n\x02vx\x18\x04 \x01(\x02\x12\n\n\x02vy\x18\x05 \x01(\x02\x12\n\n\x02vz\x18\x06 \x01(\x02\x12\x1e\n\x0fteleport_safely\x18\x07 \x01(\x08:\x05\x66\x61lse\x12\x13\n\x04roll\x18\x08 \x01(\x08:\x05\x66\x61lse\x12\x17\n\x08\x62y_force\x18\t \x01(\x08:\x05\x66\x61lse\"\xb0\x01\n\rTeleportRobot\x12\x14\n\x02id\x18\x01 \x02(\x0b\x32\x08.RobotId\x12\t\n\x01x\x18\x02 \x01(\x02\x12\t\n\x01y\x18\x03 \x01(\x02\x12\x13\n\x0borientation\x18\x04 \x01(\x02\x12\x0e\n\x03v_x\x18\x05 \x01(\x02:\x01\x30\x12\x0e\n\x03v_y\x18\x06 \x01(\x02:\x01\x30\x12\x14\n\tv_angular\x18\x07 \x01(\x02:\x01\x30\x12\x0f\n\x07present\x18\x08 \x01(\x08\x12\x17\n\x08\x62y_force\x18\t \x01(\x08:\x05\x66\x61lse\"z\n\x10SimulatorControl\x12$\n\rteleport_ball\x18\x01 \x01(\x0b\x32\r.TeleportBall\x12&\n\x0eteleport_robot\x18\x02 \x03(\x0b\x32\x0e.TeleportRobot\x12\x18\n\x10simulation_speed\x18\x03 \x01(\x02\"X\n\x10SimulatorCommand\x12\"\n\x07\x63ontrol\x18\x01 \x01(\x0b\x32\x11.SimulatorControl\x12 \n\x06\x63onfig\x18\x02 \x01(\x0b\x32\x10.SimulatorConfig\"4\n\x11SimulatorResponse\x12\x1f\n\x06\x65rrors\x18\x01 \x03(\x0b\x32\x0f.SimulatorErrorB8Z6github.com/RoboCup-SSL/ssl-simulation-protocol/pkg/sim')
+  serialized_pb=_b('\n\x1cssl_simulation_control.proto\x1a\x13ssl_gc_common.proto\x1a\x1bssl_simulation_config.proto\x1a\x1assl_simulation_error.proto\"\x88\x01\n\x0cTeleportBall\x12\t\n\x01x\x18\x01 \x01(\x02\x12\t\n\x01y\x18\x02 \x01(\x02\x12\t\n\x01z\x18\x03 \x01(\x02\x12\n\n\x02vx\x18\x04 \x01(\x02\x12\n\n\x02vy\x18\x05 \x01(\x02\x12\n\n\x02vz\x18\x06 \x01(\x02\x12\x1e\n\x0fteleport_safely\x18\x07 \x01(\x08:\x05\x66\x61lse\x12\x13\n\x04roll\x18\x08 \x01(\x08:\x05\x66\x61lse\"\x97\x01\n\rTeleportRobot\x12\x14\n\x02id\x18\x01 \x02(\x0b\x32\x08.RobotId\x12\t\n\x01x\x18\x02 \x01(\x02\x12\t\n\x01y\x18\x03 \x01(\x02\x12\x13\n\x0borientation\x18\x04 \x01(\x02\x12\x0e\n\x03v_x\x18\x05 \x01(\x02:\x01\x30\x12\x0e\n\x03v_y\x18\x06 \x01(\x02:\x01\x30\x12\x14\n\tv_angular\x18\x07 \x01(\x02:\x01\x30\x12\x0f\n\x07present\x18\x08 \x01(\x08\"z\n\x10SimulatorControl\x12$\n\rteleport_ball\x18\x01 \x01(\x0b\x32\r.TeleportBall\x12&\n\x0eteleport_robot\x18\x02 \x03(\x0b\x32\x0e.TeleportRobot\x12\x18\n\x10simulation_speed\x18\x03 \x01(\x02\"X\n\x10SimulatorCommand\x12\"\n\x07\x63ontrol\x18\x01 \x01(\x0b\x32\x11.SimulatorControl\x12 \n\x06\x63onfig\x18\x02 \x01(\x0b\x32\x10.SimulatorConfig\"4\n\x11SimulatorResponse\x12\x1f\n\x06\x65rrors\x18\x01 \x03(\x0b\x32\x0f.SimulatorErrorB8Z6github.com/RoboCup-SSL/ssl-simulation-protocol/pkg/sim')
   ,
   dependencies=[ssl__gc__common__pb2.DESCRIPTOR,ssl__simulation__config__pb2.DESCRIPTOR,ssl__simulation__error__pb2.DESCRIPTOR,])
 
@@ -92,13 +92,6 @@ _TELEPORTBALL = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='by_force', full_name='TeleportBall.by_force', index=8,
-      number=9, type=8, cpp_type=7, label=1,
-      has_default_value=True, default_value=False,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -112,7 +105,7 @@ _TELEPORTBALL = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=111,
-  serialized_end=272,
+  serialized_end=247,
 )
 
 
@@ -179,13 +172,6 @@ _TELEPORTROBOT = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='by_force', full_name='TeleportRobot.by_force', index=8,
-      number=9, type=8, cpp_type=7, label=1,
-      has_default_value=True, default_value=False,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -198,8 +184,8 @@ _TELEPORTROBOT = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=275,
-  serialized_end=451,
+  serialized_start=250,
+  serialized_end=401,
 )
 
 
@@ -243,8 +229,8 @@ _SIMULATORCONTROL = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=453,
-  serialized_end=575,
+  serialized_start=403,
+  serialized_end=525,
 )
 
 
@@ -281,8 +267,8 @@ _SIMULATORCOMMAND = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=577,
-  serialized_end=665,
+  serialized_start=527,
+  serialized_end=615,
 )
 
 
@@ -312,8 +298,8 @@ _SIMULATORRESPONSE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=667,
-  serialized_end=719,
+  serialized_start=617,
+  serialized_end=669,
 )
 
 _TELEPORTROBOT.fields_by_name['id'].message_type = ssl__gc__common__pb2._ROBOTID

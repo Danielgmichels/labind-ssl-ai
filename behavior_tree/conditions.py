@@ -9,8 +9,12 @@ class ConditionIsGameRunning(Node):
     """Retorna SUCCESS se o jogo estiver valendo, caso contrário FAILURE."""
     def tick(self, blackboard):
         # Lê o comando atual do juiz no quadro negro
-        if blackboard.referee_command in ["NORMAL_START", "FORCE_START"]:
+        if blackboard.referee_command in ["NORMAL_START", "FORCE_START", "RUNNING"]:
             return NodeState.SUCCESS
+        
+        if getattr(blackboard, 'bola_em_jogo_forcada', False):
+            return NodeState.SUCCESS
+
         return NodeState.FAILURE
 
 class ConditionIsHalted(Node):
@@ -24,6 +28,9 @@ class ConditionIsPrepareKickoff(Node):
     """Retorna SUCCESS se estamos na fase de preparação do chute inicial."""
     def tick(self, blackboard):
         # Verifica se o comando é de preparação e se é para o nosso time (Amarelo)
+        if getattr(blackboard, 'bola_em_jogo_forcada', False):
+            return NodeState.FAILURE
+
         if blackboard.referee_command == "PREPARE_KICKOFF_YELLOW" and blackboard.is_yellow:
             return NodeState.SUCCESS
         
@@ -267,4 +274,105 @@ class ConditionIsBallSafeToClear(Node):
         if na_area and self.speed < 1.2:
             return NodeState.SUCCESS
             
+        return NodeState.FAILURE
+    
+
+# ==========================================
+# Bola Parada
+# ==========================================
+class ConditionIsEnemyFreeKick(Node):
+    """Verifica se o juiz apitou uma cobrança de bola parada para o time ADVERSÁRIO."""
+    def tick(self, blackboard):
+
+        if getattr(blackboard, 'bola_em_jogo_forcada', False):
+            return NodeState.FAILURE
+
+
+        cmd = blackboard.referee_command
+        
+        # Se nós somos o time AMARELO, o inimigo é o AZUL
+        if blackboard.is_yellow:
+            if cmd in ["DIRECT_FREE_BLUE", "INDIRECT_FREE_BLUE", "PREPARE_KICKOFF_BLUE", "PREPARE_PENALTY_BLUE"]:
+                return NodeState.SUCCESS
+        else:
+            if cmd in ["DIRECT_FREE_YELLOW", "INDIRECT_FREE_YELLOW", "PREPARE_KICKOFF_YELLOW", "PREPARE_PENALTY_YELLOW"]:
+                return NodeState.SUCCESS
+                
+        return NodeState.FAILURE
+    
+class ConditionIsOurFreeKick(Node):
+    """Retorna SUCCESS se a falta for a nosso favor."""
+    def tick(self, blackboard):
+
+        if getattr(blackboard, 'bola_em_jogo_forcada', False):
+            return NodeState.FAILURE
+
+        cmd = blackboard.referee_command
+        if blackboard.is_yellow:
+            if cmd in ["DIRECT_FREE_YELLOW", "INDIRECT_FREE_YELLOW"]:
+                return NodeState.SUCCESS
+        else:
+            if cmd in ["DIRECT_FREE_BLUE", "INDIRECT_FREE_BLUE"]:
+                return NodeState.SUCCESS
+        return NodeState.FAILURE
+    
+class ConditionIsPassClear(Node):
+    """
+    Escaneia os companheiros em ordem de prioridade (Curto -> Cruzamento).
+    Traça um Raycast. Se o caminho estiver livre de inimigos, salva o alvo.
+    """
+    def tick(self, blackboard):
+        if blackboard.my_pos is None or not hasattr(blackboard, 'papeis') or not hasattr(blackboard, 'team'):
+            return NodeState.FAILURE
+
+        papeis_alvo = ["ATACANTE_APOIO_ESQ", "ATACANTE_APOIO_DIR", "MEIA_ARMADOR", "LATERAL_ESQUERDO", "LATERAL_DIREITO"]
+        
+        alvos_potenciais = []
+        for r_id, papel in blackboard.papeis.items():
+            if papel in papeis_alvo:
+                # Localiza as coordenadas reais desse companheiro
+                for r in blackboard.team:
+                    if getattr(r, 'id', -1) == r_id:
+                        alvos_potenciais.append((papel, r))
+                        break
+                        
+        if not alvos_potenciais: return NodeState.FAILURE
+            
+        # Ordena a lista garantindo que ele vai olhar primeiro pro passe curto
+        alvos_potenciais.sort(key=lambda x: papeis_alvo.index(x[0]))
+        
+        start_x = blackboard.my_pos.pos.x
+        start_y = blackboard.my_pos.pos.y
+        safe_radius = 0.20 # Folga da bola para o inimigo
+        
+        for papel, alvo_pos in alvos_potenciais:
+            dx = alvo_pos.pos.x - start_x
+            dy = alvo_pos.pos.y - start_y
+            segment_length_squared = dx*dx + dy*dy
+            
+            if segment_length_squared == 0: continue
+                
+            caminho_limpo = True
+            # Escaneia APENAS os inimigos bloqueando a reta
+            if hasattr(blackboard, 'enemies'):
+                for obs in blackboard.enemies:
+                    if abs(obs.pos.x) < 0.001 and abs(obs.pos.y) < 0.001: continue 
+                        
+                    px = obs.pos.x - start_x
+                    py = obs.pos.y - start_y
+                    
+                    t = max(0, min(1, (px * dx + py * dy) / segment_length_squared))
+                    proj_x = start_x + t * dx
+                    proj_y = start_y + t * dy
+                    
+                    dist_to_line = math.hypot(obs.pos.x - proj_x, obs.pos.y - proj_y)
+                    if dist_to_line < safe_radius:
+                        caminho_limpo = False
+                        break
+                        
+            if caminho_limpo:
+                # Achou o primeiro alvo limpo da lista! Salva e chuta.
+                blackboard.pass_target = alvo_pos
+                return NodeState.SUCCESS
+                
         return NodeState.FAILURE
