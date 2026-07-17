@@ -373,3 +373,15 @@ class ConditionIsPassClear(Node):
                 return NodeState.SUCCESS
                 
         return NodeState.FAILURE
+    
+
+class ConditionCheckRole(Node):
+    """Verifica se o robô atual foi escalado pelo Maestro para um papel específico."""
+    def __init__(self, role_name):
+        super().__init__()
+        self.role_name = role_name
+
+    def tick(self, blackboard):
+        if blackboard.my_role == self.role_name:
+            return NodeState.SUCCESS
+        return NodeState.FAILURE

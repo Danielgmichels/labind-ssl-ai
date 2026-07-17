@@ -582,6 +582,23 @@ def build_espera_tree():
     """Árvore genérica para robôs ociosos: apenas desliga os motores."""
     return ActionStopMotors()
 
+def build_master_tree():
+    """Cria uma Árvore de Comportamento Mestra que engloba todo o time."""
+    return Selector([
+        Sequence([ConditionCheckRole("GOLEIRO"), build_goleiro_tree()]),
+        Sequence([ConditionCheckRole("ATACANTE"), build_attacker_tree()]),
+        Sequence([ConditionCheckRole("ATACANTE_APOIO_ESQ"), build_atacante_apoio_tree(2.5, 4, 45.0)]),
+        Sequence([ConditionCheckRole("ATACANTE_APOIO_DIR"), build_atacante_apoio_tree(-2.5, 5, -45.0)]),
+        Sequence([ConditionCheckRole("MEIA_ARMADOR"), build_meia_armador_tree()]),
+        Sequence([ConditionCheckRole("MEIO_CAMPO"), build_meio_campo_tree()]),
+        Sequence([ConditionCheckRole("VOLANTE"), build_volante_tree()]),
+        Sequence([ConditionCheckRole("LATERAL_ESQUERDO"), build_lateral_tree(3.5, 1)]),
+        Sequence([ConditionCheckRole("LATERAL_DIREITO"), build_lateral_tree(-3.5, 2)]),
+        Sequence([ConditionCheckRole("ZAGUEIRO_BLOQUEIO"), build_zaga_bloqueio_tree()]),
+        Sequence([ConditionCheckRole("ZAGUEIRO_MARCACAO"), build_zaga_marcacao_tree()]),
+        Sequence([ConditionCheckRole("ESPERA"), build_espera_tree()])
+    ])
+
 # ==========================================
 # LOOP PRINCIPAL (Integração)
 # ==========================================
@@ -641,17 +658,8 @@ def main():
     last_debug_time = time.time()
 
     # Gera os diagramas visuais!
-    export_tree_to_dot(arvore_atacante, "diagramas/mapa_arvore_atacante.dot")
-    export_tree_to_dot(arvore_goleiro, "diagramas/mapa_arvore_goleiro.dot")
-    export_tree_to_dot(arvore_zaga_bloqueio, "diagramas/mapa_arvore_zaga_bloqueio.dot")
-    export_tree_to_dot(arvore_zaga_marcacao, "diagramas/mapa_arvore_zaga_marcacao.dot")
-    export_tree_to_dot(arvore_atacante_apoio_esq, "diagramas/mapa_arvore_atacante_apoio_esq.dot")
-    export_tree_to_dot(arvore_atacante_apoio_dir, "diagramas/mapa_arvore_atacante_apoio_dir.dot")
-    export_tree_to_dot(arvore_meio_campo, "diagramas/mapa_arvore_meio_campo.dot")
-    export_tree_to_dot(arvore_meia_armador, "diagramas/mapa_arvore_meia_armador.dot")
-    export_tree_to_dot(arvore_volante, "diagramas/mapa_arvore_volante.dot")
-    export_tree_to_dot(arvore_lateral_esq, "diagramas/mapa_arvore_lateral_esquerda.dot")
-    export_tree_to_dot(arvore_lateral_dir, "diagramas/mapa_arvore_lateral_direita.dot")
+    arvore_mestra = build_master_tree()
+    export_tree_to_dot(arvore_mestra, "diagramas/mapa_arvore_mestra.dot")
     
     while True:
         start_time = time.time()
@@ -775,42 +783,7 @@ def main():
                     # ---------------------------------------------------
                     
                     # 2. Aciona o Cérebro correto dependendo do papel
-                    if bb.my_role == "ATACANTE":
-                        arvore_atacante.tick(bb)
-
-                    elif bb.my_role == "ATACANTE_APOIO_ESQ":
-                        arvore_atacante_apoio_esq.tick(bb)
-
-                    elif bb.my_role == "ATACANTE_APOIO_DIR":
-                        arvore_atacante_apoio_dir.tick(bb)
-
-                    elif bb.my_role == "MEIO_CAMPO":
-                        arvore_meio_campo.tick(bb)
-
-                    elif bb.my_role == "ZAGUEIRO_BLOQUEIO":
-                        arvore_zaga_bloqueio.tick(bb) # Não esqueça de declarar essa árvore no main()!
-                    
-                    elif bb.my_role == "ZAGUEIRO_MARCACAO":
-                        arvore_zaga_marcacao.tick(bb)
-    
-                    elif bb.my_role == "GOLEIRO":
-                        # Por enquanto, deixa parado até fazermos a árvore dele
-                        arvore_goleiro.tick(bb)
-
-                    elif bb.my_role == "MEIA_ARMADOR":      
-                        arvore_meia_armador.tick(bb)
-
-                    elif bb.my_role == "VOLANTE":           
-                        arvore_volante.tick(bb)
-
-                    elif bb.my_role == "LATERAL_ESQUERDO":  
-                        arvore_lateral_esq.tick(bb)
-
-                    elif bb.my_role == "LATERAL_DIREITO":   
-                        arvore_lateral_dir.tick(bb)
-
-                    elif bb.my_role == "ESPERA":
-                        arvore_espera.tick(bb)
+                    arvore_mestra.tick(bb)
                         
         # ==========================================
         # PAINEL DE DEBUG (Imprime a cada 1 segundo)

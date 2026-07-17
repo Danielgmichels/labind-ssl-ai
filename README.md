@@ -35,3 +35,6 @@ estrategia_labind/
 ├── proto_msg/             # Arquivos compilados do Google Protobuf
 ├── Dockerfile             # Receita de infraestrutura
 └── requirements.txt       # Dependências do Python
+
+## Arquitetura Tática (Behavior Tree)
+![Árvore Mestra do Time Amarelo](diagramas/mapa_arvore_mestra.png)
