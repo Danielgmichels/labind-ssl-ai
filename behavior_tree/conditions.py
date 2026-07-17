@@ -24,21 +24,24 @@ class ConditionIsHalted(Node):
             return NodeState.SUCCESS
         return NodeState.FAILURE
 
-class ConditionIsPrepareKickoff(Node):
-    """Retorna SUCCESS se estamos na fase de preparação do chute inicial."""
+class ConditionIsOurPrepareKickoff(Node):
+    """Retorna SUCCESS se é o NOSSO time que vai dar a saída de centro."""
     def tick(self, blackboard):
-        # Verifica se o comando é de preparação e se é para o nosso time (Amarelo)
-        if getattr(blackboard, 'bola_em_jogo_forcada', False):
-            return NodeState.FAILURE
+        if getattr(blackboard, 'bola_em_jogo_forcada', False): return NodeState.FAILURE
 
-        if blackboard.referee_command == "PREPARE_KICKOFF_YELLOW" and blackboard.is_yellow:
-            return NodeState.SUCCESS
-        
-        # Lógica análoga caso o time fosse azul
-        if blackboard.referee_command == "PREPARE_KICKOFF_BLUE" and not blackboard.is_yellow:
-            return NodeState.SUCCESS
-            
+        if blackboard.referee_command == "PREPARE_KICKOFF_YELLOW" and blackboard.is_yellow: return NodeState.SUCCESS
+        if blackboard.referee_command == "PREPARE_KICKOFF_BLUE" and not blackboard.is_yellow: return NodeState.SUCCESS
         return NodeState.FAILURE
+    
+class ConditionIsEnemyPrepareKickoff(Node):
+    """Retorna SUCCESS se é o INIMIGO que vai dar a saída de centro."""
+    def tick(self, blackboard):
+        if getattr(blackboard, 'bola_em_jogo_forcada', False): return NodeState.FAILURE
+
+        if blackboard.referee_command == "PREPARE_KICKOFF_YELLOW" and not blackboard.is_yellow: return NodeState.SUCCESS
+        if blackboard.referee_command == "PREPARE_KICKOFF_BLUE" and blackboard.is_yellow: return NodeState.SUCCESS
+        return NodeState.FAILURE
+
     
 # ==========================================
 # NÓS DE CONDIÇÃO (Ofensivas)
@@ -281,24 +284,18 @@ class ConditionIsBallSafeToClear(Node):
 # Bola Parada
 # ==========================================
 class ConditionIsEnemyFreeKick(Node):
-    """Verifica se o juiz apitou uma cobrança de bola parada para o time ADVERSÁRIO."""
+    """Verifica se o juiz apitou uma cobrança de FALTA NORMAL para o time adversário."""
     def tick(self, blackboard):
-
-        if getattr(blackboard, 'bola_em_jogo_forcada', False):
-            return NodeState.FAILURE
-
-
-        cmd = blackboard.referee_command
+        if getattr(blackboard, 'bola_em_jogo_forcada', False): return NodeState.FAILURE
         
-        # Se nós somos o time AMARELO, o inimigo é o AZUL
+        cmd = blackboard.referee_command
+        # REMOVIDO os PREPARE_KICKOFF daqui de dentro!
         if blackboard.is_yellow:
-            if cmd in ["DIRECT_FREE_BLUE", "INDIRECT_FREE_BLUE", "PREPARE_KICKOFF_BLUE", "PREPARE_PENALTY_BLUE"]:
-                return NodeState.SUCCESS
+            if cmd in ["DIRECT_FREE_BLUE", "INDIRECT_FREE_BLUE", "PREPARE_PENALTY_BLUE"]: return NodeState.SUCCESS
         else:
-            if cmd in ["DIRECT_FREE_YELLOW", "INDIRECT_FREE_YELLOW", "PREPARE_KICKOFF_YELLOW", "PREPARE_PENALTY_YELLOW"]:
-                return NodeState.SUCCESS
-                
+            if cmd in ["DIRECT_FREE_YELLOW", "INDIRECT_FREE_YELLOW", "PREPARE_PENALTY_YELLOW"]: return NodeState.SUCCESS
         return NodeState.FAILURE
+
     
 class ConditionIsOurFreeKick(Node):
     """Retorna SUCCESS se a falta for a nosso favor."""

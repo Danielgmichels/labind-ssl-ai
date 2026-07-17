@@ -71,8 +71,8 @@ class ProportionalController:
         self.max_angular_vel = max_angular_vel
         
         # Valores drasticamente reduzidos para suportar o campo lotado (12 robôs)
-        self.dist_segura = 0.16  # Raio do robô + folga mínima
-        self.kr_repulsao = 0.015  # Repulsão base muito mais suave
+        self.dist_segura = 0.20  # Raio do robô + folga mínima
+        self.kr_repulsao = 0.017  # Repulsão base muito mais suave
 
     def calculate_velocity(self, robot_x, robot_y, robot_yaw, ball_x, ball_y, obstacles):
         # 1. FORÇA DE ATRAÇÃO
@@ -97,10 +97,10 @@ class ProportionalController:
         fator_velocidade = mag_attr / self.max_vel 
         
         # Aumenta no máximo +15cm de segurança quando estiver rápido (Total 30cm)
-        dist_segura_dinamica = self.dist_segura + (fator_velocidade * 0.15)
+        dist_segura_dinamica = self.dist_segura + (fator_velocidade * 0.20)
         
         # Aumenta a força repulsiva de forma sutil
-        kr_dinamico = self.kr_repulsao + (fator_velocidade * 0.08)
+        kr_dinamico = self.kr_repulsao + (fator_velocidade * 0.10)
         
         # 2. FORÇA DE REPULSÃO (Com correção GNRON e Paredes Sólidas)
         rep_x = 0.0
@@ -118,7 +118,7 @@ class ProportionalController:
             
             if is_wall:
                 # PAREDE DE CONCRETO: Empurra muito forte e de mais longe
-                dist_segura_atual = 0.70  # Sente a parede a 40cm de distância
+                dist_segura_atual = 0.85  # Sente a parede a 40cm de distância
                 kr_atual = 3.0            # Força brutal (ignora a atração da bola)
                 fator_foco_atual = 1.0    # Sempre empurra com 100% de prioridade
             else:
@@ -265,7 +265,6 @@ class Blackboard:
         # O Muro Físico das áreas gerado apenas uma vez
         self.defense_walls = create_solid_defense_walls() 
 
-
 # ==========================================
 # MÓDULO 5: ÁRBITRO (Rede Multicast)
 # ==========================================
@@ -382,20 +381,54 @@ def maestro_distribui_papeis(team_robots, ball_pos, enemy_goal_x, last_roles=Non
     # Ordena: [0] é o mais perto do gol inimigo, [-1] é o mais perto do nosso gol
     sobra.sort(key=lambda x: x[0])
     
-    # 1. LINHA DE FRENTE (Os 3 mais avançados)
-    if len(sobra) > 0: papeis[sobra.pop(0)[1]] = "ATACANTE_APOIO_ESQ" 
-    if len(sobra) > 0: papeis[sobra.pop(0)[1]] = "ATACANTE_APOIO_DIR" 
-    if len(sobra) > 0: papeis[sobra.pop(0)[1]] = "MEIA_ARMADOR"
+    # ---------------------------------------------------------
+    # 1. LINHA DE FRENTE (Os 3 mais avançados com Consciência de Y)
+    # ---------------------------------------------------------
+    frente = []
+    for _ in range(min(3, len(sobra))):
+        frente.append(sobra.pop(0))
         
+    if frente:
+        # Ordena os 3 separados pelo eixo Y (do maior/Esquerda para o menor/Direita)
+        frente.sort(key=lambda item: next((r.pos.y for r in team_robots if getattr(r, 'id', -1) == item[1]), 0.0), reverse=True)
+        
+        if len(frente) == 3:
+            papeis[frente[0][1]] = "ATACANTE_APOIO_ESQ"
+            papeis[frente[1][1]] = "MEIA_ARMADOR"
+            papeis[frente[2][1]] = "ATACANTE_APOIO_DIR"
+        elif len(frente) == 2:
+            papeis[frente[0][1]] = "ATACANTE_APOIO_ESQ"
+            papeis[frente[1][1]] = "ATACANTE_APOIO_DIR"
+        elif len(frente) == 1:
+            papeis[frente[0][1]] = "MEIA_ARMADOR"
+
+    # ---------------------------------------------------------
     # 2. RETRANCA (Os 3 mais recuados)
+    # ---------------------------------------------------------
     if len(sobra) > 0: papeis[sobra.pop(-1)[1]] = "ZAGUEIRO_BLOQUEIO" 
     if len(sobra) > 0: papeis[sobra.pop(-1)[1]] = "ZAGUEIRO_MARCACAO" 
     if len(sobra) > 0: papeis[sobra.pop(-1)[1]] = "VOLANTE"
         
-    # 3. MIOLO DO CAMPO E LATERAIS (Os 3 que restaram no meio da lista)
-    if len(sobra) > 0: papeis[sobra.pop(0)[1]] = "LATERAL_ESQUERDO"
-    if len(sobra) > 0: papeis[sobra.pop(0)[1]] = "LATERAL_DIREITO"
-    if len(sobra) > 0: papeis[sobra.pop(0)[1]] = "MEIO_CAMPO"
+    # ---------------------------------------------------------
+    # 3. MIOLO DO CAMPO E LATERAIS (Os que restaram no meio)
+    # ---------------------------------------------------------
+    miolo = []
+    for _ in range(min(3, len(sobra))):
+         miolo.append(sobra.pop(0))
+         
+    if miolo:
+         # Ordena pelo eixo Y para garantir que ninguém cruze o campo
+         miolo.sort(key=lambda item: next((r.pos.y for r in team_robots if getattr(r, 'id', -1) == item[1]), 0.0), reverse=True)
+         
+         if len(miolo) == 3:
+             papeis[miolo[0][1]] = "LATERAL_ESQUERDO"
+             papeis[miolo[1][1]] = "MEIO_CAMPO"
+             papeis[miolo[2][1]] = "LATERAL_DIREITO"
+         elif len(miolo) == 2:
+             papeis[miolo[0][1]] = "LATERAL_ESQUERDO"
+             papeis[miolo[1][1]] = "LATERAL_DIREITO"
+         elif len(miolo) == 1:
+             papeis[miolo[0][1]] = "MEIO_CAMPO"
         
     for s in sobra:
         papeis[s[1]] = "ESPERA"
@@ -403,102 +436,75 @@ def maestro_distribui_papeis(team_robots, ball_pos, enemy_goal_x, last_roles=Non
     return papeis
 
 def build_attacker_tree():
-    """Constrói a Behavior Tree do Atacante e retorna o nó raiz."""
-    
     ramo_emergencia = Sequence([ConditionIsHalted(), ActionStopMotors()])
-    ramo_kickoff = Sequence([ConditionIsPrepareKickoff(), ActionPrepareKickoff()])
+    
+    # O Atacante é o único com comportamento diferente
+    ramo_kickoff_nosso = Sequence([ConditionIsOurPrepareKickoff(), ActionPrepareKickoff()])
+    # Na saída do inimigo, fica a 80cm da bola, perfeitamente fora do círculo central de 50cm!
+    ramo_kickoff_deles = Sequence([ConditionIsEnemyPrepareKickoff(), ActionPositionForKickoff(0.8, 0.0)])
 
-    ramo_falta_inimiga = Sequence([ConditionIsEnemyFreeKick(), ActionMarkEnemy(6)])
-
-
-    
-    # 3.0. O reflexo de Recepção de Passe
-    receber_passe = Sequence([
-        ConditionIsPassArriving(),
-        ActionInterceptPass() # <--- Nome atualizado
-    ])
-
-    # 3.1. Finalizar (O Radar encontrou uma fresta no gol)
-    tentar_finalizar = Sequence([
-        ConditionIsNearBall(),
-        ConditionIsInShootingZone(),
-        ConditionIsPathClear(), 
-        ActionAimAndShoot()
+    cobrar_falta = Sequence([ # (Seu bloco cobrar_falta antigo continua igualzinho aqui) ...
+        ConditionIsOurFreeKick(),
+        Selector([
+            Sequence([ConditionIsNearBall(), ConditionIsPassClear(), ActionPassBall()]),
+            Sequence([ConditionIsNearBall(), ActionCrossToBox()]), 
+            ActionGoToBall() 
+        ])
     ])
     
-    # 3.2. O Passe! (Gol bloqueado, mas tem parceiro limpo)
-    tentar_passe = Sequence([
-        ConditionIsNearBall(),
-        ConditionIsPassClear(), # Verifica companheiro e linha limpa
-        ActionPassBall()
-    ])
-    
-    # 3.3. Achar Ângulo (Tudo bloqueado. Anda de lado!)
-    achar_angulo = Sequence([
-        ConditionIsNearBall(),
-        ConditionIsInShootingZone(),
-        ActionFindShootingAngle()
-    ])
-    
-    # 3.4. Conduzir 
-    tentar_conduzir = Sequence([
-        ConditionIsNearBall(),
-        ActionSmartDribble()
-    ])
-    
-    # 3.5. Buscar 
+    receber_passe = Sequence([ConditionIsPassArriving(), ActionInterceptPass()])
+    tentar_finalizar = Sequence([ConditionIsNearBall(), ConditionIsInShootingZone(), ConditionIsPathClear(), ActionAimAndShoot()])
+    tentar_passe = Sequence([ConditionIsNearBall(), ConditionIsPassClear(), ActionPassBall()])
+    achar_angulo = Sequence([ConditionIsNearBall(), ConditionIsInShootingZone(), ActionFindShootingAngle()])
+    tentar_conduzir = Sequence([ConditionIsNearBall(), ActionSmartDribble()])
     buscar_bola = ActionGoToBall()
     
-    # Agrupa todo o comportamento ofensivo (A Ordem Importa Muito!)
     ramo_ofensivo = Sequence([
         Selector([ConditionIsGameRunning(), ConditionIsOurFreeKick()]),
         Selector([receber_passe, tentar_finalizar, tentar_passe, achar_angulo, tentar_conduzir, buscar_bola])
     ])
 
-    
-    root = Selector([ramo_emergencia, ramo_kickoff, Sequence([ConditionIsEnemyFreeKick(), ActionMarkEnemy(6)]), ramo_ofensivo])
-    return root
+    return Selector([ramo_emergencia, ramo_kickoff_nosso, ramo_kickoff_deles, Sequence([ConditionIsEnemyFreeKick(), ActionMarkEnemy(6)]), cobrar_falta, ramo_ofensivo])
+
+# --- PARA O RESTO DO TIME, O KICKOFF É UMA POSIÇÃO FIXA E ESPAÇADA ---
+qualquer_kickoff = Selector([ConditionIsOurPrepareKickoff(), ConditionIsEnemyPrepareKickoff()])
 
 # Agora o Apoio recebe o lado, o índice de marcação (falta inimiga) e o ângulo (nossa falta)
 def build_atacante_apoio_tree(lado_y, indice_marcacao, angulo_falta):
-    receber_passe = Sequence([
-        ConditionIsPassArriving(), 
-        ActionInterceptPass()
-    ])
-
-    ramo_ofensivo = Sequence([
-        ConditionIsGameRunning(), 
-        Selector([receber_passe, ActionPositionForPass(lado_y)])
-    ])
+    receber_passe = Sequence([ConditionIsPassArriving(), ActionInterceptPass()])
+    ramo_ofensivo = Sequence([ConditionIsGameRunning(), Selector([receber_passe, ActionPositionForPass(lado_y)])])
     
     return Selector([
         Sequence([ConditionIsHalted(), ActionStopMotors()]),
+        # NOVO: Espaçados 1.5 metros para trás, abertos nas alas
+        Sequence([qualquer_kickoff, ActionPositionForKickoff(1.5, lado_y)]), 
         Sequence([ConditionIsEnemyFreeKick(), ActionMarkEnemy(indice_marcacao)]),
         Sequence([ConditionIsOurFreeKick(), ActionPositionForShortPass(angulo_falta, 1.5)]),
         ramo_ofensivo,
         ActionStopMotors() 
     ])
 
-
-
 def build_zaga_bloqueio_tree():
+    valendo_ou_nossa_falta = Selector([ConditionIsGameRunning(), ConditionIsOurFreeKick()])
     return Selector([
         Sequence([ConditionIsHalted(), ActionStopMotors()]),
-        # NOVO: Pilar central da barreira (offset 0.0)
+        # NOVO: Zaga se abre na frente da área (Y=1.5)
+        Sequence([qualquer_kickoff, ActionPositionForKickoff(5.0, 1.5)]),
         Sequence([ConditionIsEnemyFreeKick(), ActionFormDefensiveWall(offset_lateral=0.0)]),
-        Sequence([ConditionIsGameRunning(), ActionZagueiroBloqueio()]),
+        Sequence([valendo_ou_nossa_falta, ActionZagueiroBloqueio()]), 
         ActionStopMotors() 
     ])
 
 def build_zaga_marcacao_tree():
+    valendo_ou_nossa_falta = Selector([ConditionIsGameRunning(), ConditionIsOurFreeKick()])
     return Selector([
         Sequence([ConditionIsHalted(), ActionStopMotors()]),
-        # NOVO: Fica do lado direito da barreira (+18cm)
+        # NOVO: Zaga se abre na frente da área (Y=-1.5)
+        Sequence([qualquer_kickoff, ActionPositionForKickoff(5.0, -1.5)]),
         Sequence([ConditionIsEnemyFreeKick(), ActionFormDefensiveWall(offset_lateral=0.18)]),
-        Sequence([ConditionIsGameRunning(), ActionZagueiroMarcacao()]),
+        Sequence([valendo_ou_nossa_falta, ActionZagueiroMarcacao()]),
         ActionStopMotors() 
     ])
-
 
 def build_goleiro_tree():
     """Constrói a Behavior Tree do Goleiro."""
@@ -528,49 +534,49 @@ def build_goleiro_tree():
     return root
 
 def build_meio_campo_tree():
+    valendo_ou_nossa_falta = Selector([ConditionIsGameRunning(), ConditionIsOurFreeKick()])
     return Selector([
         Sequence([ConditionIsHalted(), ActionStopMotors()]),
+        # NOVO: Fixado no centro a 3.5 metros
+        Sequence([qualquer_kickoff, ActionPositionForKickoff(3.5, 0.0)]),
         Sequence([ConditionIsEnemyFreeKick(), ActionMarkEnemy(0)]),
-        Sequence([ConditionIsGameRunning(), ActionMidfieldSupport()]),
+        Sequence([valendo_ou_nossa_falta, ActionMidfieldSupport()]), 
         ActionStopMotors() 
     ])
-
 
 def build_meia_armador_tree():
     return Selector([
         Sequence([ConditionIsHalted(), ActionStopMotors()]), 
+        # NOVO: Centro-ofensivo recuado 2.5m
+        Sequence([qualquer_kickoff, ActionPositionForKickoff(2.5, 0.0)]),
         Sequence([ConditionIsEnemyFreeKick(), ActionMarkEnemy(3)]),
-        # NOVO: Vai ser a Opção Curta 2 (Pelo outro lado: -45 graus)
         Sequence([ConditionIsOurFreeKick(), ActionPositionForShortPass(-45.0, 1.5)]),
         Sequence([ConditionIsGameRunning(), ActionMeiaArmador()]), 
         ActionStopMotors()
     ])
 
-
-
 def build_volante_tree():
+    valendo_ou_nossa_falta = Selector([ConditionIsGameRunning(), ConditionIsOurFreeKick()])
     return Selector([
         Sequence([ConditionIsHalted(), ActionStopMotors()]),
-        # NOVO: Fica do lado esquerdo da barreira (-18cm)
+        # NOVO: Cão de guarda fica a 4.5 metros (quase na área)
+        Sequence([qualquer_kickoff, ActionPositionForKickoff(4.5, 0.0)]),
         Sequence([ConditionIsEnemyFreeKick(), ActionFormDefensiveWall(offset_lateral=-0.18)]),
-        Sequence([ConditionIsGameRunning(), ActionVolanteDefensivo()]),
+        Sequence([valendo_ou_nossa_falta, ActionVolanteDefensivo()]),
         ActionStopMotors() 
     ])
-
 
 # O Y vai ser 3.5 (esquerda) e -3.5 (direita) para correr perto da borda
 def build_lateral_tree(lado_y, indice_marcacao):
     return Selector([
         Sequence([ConditionIsHalted(), ActionStopMotors()]), 
+        # NOVO: Bem abertos nas laterais a 3 metros
+        Sequence([qualquer_kickoff, ActionPositionForKickoff(3.0, lado_y)]),
         Sequence([ConditionIsEnemyFreeKick(), ActionMarkEnemy(indice_marcacao)]),
-        # NOVO: Correm pras laterais da área pro cruzamento
         Sequence([ConditionIsOurFreeKick(), ActionPositionForCross(lado_y)]),
         Sequence([ConditionIsGameRunning(), ActionLateral(lado_y)]), 
         ActionStopMotors()
     ])
-
-
-
 
 def build_espera_tree():
     """Árvore genérica para robôs ociosos: apenas desliga os motores."""
@@ -630,8 +636,6 @@ def main():
     arvore_zaga_marcacao = build_zaga_marcacao_tree()
     arvore_atacante_apoio_esq = build_atacante_apoio_tree(2.5, 4, 45.0)
     arvore_atacante_apoio_dir = build_atacante_apoio_tree(-2.5, 5, -45.0)
-
-    cycle_time = 1.0 / 60 
     
     # --- NOVO: Timer para o Debug ---
     last_debug_time = time.time()
@@ -716,7 +720,7 @@ def main():
                                                  bb.ball_pos.y - bb.posicao_bola_no_apito[1])
                     
                     # A bola voou mais rápido que 0.8 m/s OU andou mais que 15 cm da marca da falta?
-                    if speed > 0.8 or dist_movida > 0.15:
+                    if speed > 1.0 or dist_movida > 1.5:
                         bb.bola_em_jogo_forcada = True
                         print("⚡ I.A.: A bola andou! Forçando o NORMAL_START e desfazendo a formação!")
                 # -------------------------------------------------------

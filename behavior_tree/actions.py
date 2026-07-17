@@ -320,7 +320,7 @@ class ActionPassBall(Node):
         
         raio_do_robo = 0.09 
         vl = vw * raio_do_robo 
-        vf = 0.5 
+        vf = 0.1
         velocidade_chute = 0.0
         
         # === A CORREÇÃO DO SNIPER VEM AQUI ===
@@ -330,7 +330,7 @@ class ActionPassBall(Node):
             vl = 0.0
             
             dist_passe = math.hypot(alvo.pos.x - blackboard.my_pos.pos.x, alvo.pos.y - blackboard.my_pos.pos.y)
-            velocidade_chute = min(dist_passe * 1.8, 6.0) 
+            velocidade_chute = min(dist_passe * 1.9, 6.0) 
             
             # FREIA O ROBÔ: Garante que a bola bata limpa no chutador e não nas rodas
             vf = 0.0 
@@ -582,7 +582,6 @@ class ActionZagueiroBloqueio(Node):
             robot_id=blackboard.my_id, v_forward=vf, v_left=vl, vw=vw,
             kick_speed=velocidade_chute, dribbler_speed=velocidade_driblador
         )
-        return NodeState.RUNNING
         return NodeState.RUNNING
 
 
@@ -965,5 +964,81 @@ class ActionPositionForCross(Node):
         blackboard.action.send_command(
             robot_id=blackboard.my_id, v_forward=vf, v_left=vl, vw=max(min(vw, 5.0), -5.0),
             kick_speed=0.0, dribbler_speed=1500.0
+        )
+        return NodeState.RUNNING
+    
+class ActionCrossToBox(Node):
+    """Gira no próprio eixo e manda um balão (cruzamento alto) para a área."""
+    def tick(self, blackboard):
+        if blackboard.my_pos is None: return NodeState.FAILURE
+
+        direcao = 1 if blackboard.enemy_goal_x > 0 else -1
+        alvo_x = blackboard.enemy_goal_x - (direcao * 2.5) # Marca do pênalti/entrada da área
+        alvo_y = 0.0 # Meio da confusão
+        
+        target_angle = math.atan2(alvo_y - blackboard.my_pos.pos.y, alvo_x - blackboard.my_pos.pos.x)
+        erro_angular = target_angle - blackboard.my_pos.yaw
+        erro_angular = (erro_angular + math.pi) % (2 * math.pi) - math.pi
+        
+        vw = erro_angular * blackboard.controller.kp_angular
+        vw = max(min(vw, blackboard.controller.max_angular_vel), -blackboard.controller.max_angular_vel)
+        
+        raio_do_robo = 0.09 
+        vl = vw * raio_do_robo 
+        vf = 0.0 # PROIBIDO andar para frente na cobrança!
+        velocidade_chute = 0.0
+        angulo_chute = 0.0
+        
+        if abs(erro_angular) < 0.05:
+            vw = 0.0
+            vl = 0.0
+            velocidade_chute = 6.0 
+            angulo_chute = 45.0 # Manda por cima da defesa deles!
+            
+        blackboard.action.send_command(
+            robot_id=blackboard.my_id, v_forward=vf, v_left=vl, vw=vw,
+            kick_speed=velocidade_chute, kick_angle=angulo_chute, dribbler_speed=1500.0
+        )
+        return NodeState.RUNNING
+    
+class ActionPositionForKickoff(Node):
+    """
+    Espalha os robôs na própria metade do campo de forma estática e segura.
+    x_offset: Distância em metros da linha de meio-campo para trás (sempre positivo).
+    y_offset: Posição lateral.
+    """
+    def __init__(self, x_offset, y_offset):
+        super().__init__()
+        self.x_offset = x_offset
+        self.y_offset = y_offset
+
+    def tick(self, blackboard):
+        if blackboard.my_pos is None: return NodeState.FAILURE
+
+        direcao = 1 if blackboard.our_goal_x > 0 else -1
+
+        # A matemática da segurança: X=0 é o meio. Somamos o offset na direção do nosso gol.
+        # Isso garante que a gente nunca invada o campo deles antes do apito!
+        alvo_x = 0.0 + (direcao * self.x_offset)
+        alvo_y = self.y_offset
+
+        # Mira sempre para o centro do campo (onde a bola está no kickoff)
+        look_x, look_y = 0.0, 0.0
+
+        vf, vl, _ = blackboard.controller.calculate_velocity(
+            blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw, 
+            alvo_x, alvo_y, blackboard.obstacles
+        )
+        
+        target_angle = math.atan2(look_y - blackboard.my_pos.pos.y, look_x - blackboard.my_pos.pos.x)
+        erro_angular = target_angle - blackboard.my_pos.yaw
+        erro_angular = (erro_angular + math.pi) % (2 * math.pi) - math.pi
+        
+        vw = erro_angular * blackboard.controller.kp_angular
+        vw = max(min(vw, blackboard.controller.max_angular_vel), -blackboard.controller.max_angular_vel)
+
+        blackboard.action.send_command(
+            robot_id=blackboard.my_id, v_forward=vf, v_left=vl, vw=vw,
+            kick_speed=0.0, dribbler_speed=0.0
         )
         return NodeState.RUNNING
