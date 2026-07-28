@@ -643,7 +643,6 @@ def main():
 
     # Gera os diagramas visuais!
     arvore_mestra = build_master_tree()
-    export_tree_to_dot(arvore_mestra, "diagramas/mapa_arvore_mestra.dot")
     export_tree_to_xml(arvore_mestra, "diagramas/arvore_mestra.xml")
     
     while True:
