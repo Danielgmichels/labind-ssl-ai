@@ -636,23 +636,7 @@ def main():
         bb.our_goal_x = -6.0
         bb.enemy_goal_x = 6.0
         
-    
-    # 3. Constrói o Cérebro do Atacante
-    arvore_atacante = build_attacker_tree()
-    arvore_goleiro = build_goleiro_tree()
-    arvore_espera = build_espera_tree()
-    arvore_zaga_bloqueio = build_zaga_bloqueio_tree()
-    arvore_meio_campo = build_meio_campo_tree()
-    arvore_meia_armador = build_meia_armador_tree()
-    arvore_volante = build_volante_tree()
-    arvore_lateral_esq = build_lateral_tree(3.5, 1)
-    arvore_lateral_dir = build_lateral_tree(-3.5, 2)
-
-    cycle_time = 1.0 / 60 
-    
-    arvore_zaga_marcacao = build_zaga_marcacao_tree()
-    arvore_atacante_apoio_esq = build_atacante_apoio_tree(2.5, 4, 45.0)
-    arvore_atacante_apoio_dir = build_atacante_apoio_tree(-2.5, 5, -45.0)
+    cycle_time = 1.0 / 60 # Define o tempo de ciclo para 60Hz
     
     # --- NOVO: Timer para o Debug ---
     last_debug_time = time.time()
@@ -660,6 +644,7 @@ def main():
     # Gera os diagramas visuais!
     arvore_mestra = build_master_tree()
     export_tree_to_dot(arvore_mestra, "diagramas/mapa_arvore_mestra.dot")
+    export_tree_to_xml(arvore_mestra, "diagramas/arvore_mestra.xml")
     
     while True:
         start_time = time.time()

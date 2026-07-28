@@ -724,7 +724,7 @@ class ActionMeiaArmador(Node):
 
         vf, vl, vw = blackboard.controller.calculate_velocity(
             blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw, alvo_x, alvo_y, blackboard.obstacles)
-        vw = blackboard.controller.kp_angular * ((math.atan2(blackboard.ball_pos.y - blackboard.my_pos.pos.y, blackboard.ball_pos.x - blackboard.my_pos.pos.x) - blackboard.my_pos.yaw + math.pi) % (2 * math.pi) - math.pi)
+        vw = blackboard.controller.kp_angular * ((math.atan2(blackboard.ball_pos.y - blackboard.my_pos.pos.y, blackboard.ball_pos.x - blackboard.my_pos.pos.x) - blackboard.my_pos.yaw + math.pi) % (2 * math.pi) - math.pi) # type: ignore
         
         blackboard.action.send_command(robot_id=blackboard.my_id, v_forward=vf, v_left=vl, vw=max(min(vw, 5.0), -5.0), kick_speed=0.0, dribbler_speed=0.0)
         return NodeState.RUNNING
@@ -744,7 +744,7 @@ class ActionVolanteDefensivo(Node):
 
         vf, vl, vw = blackboard.controller.calculate_velocity(
             blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw, alvo_x, alvo_y, blackboard.obstacles)
-        vw = blackboard.controller.kp_angular * ((math.atan2(blackboard.ball_pos.y - blackboard.my_pos.pos.y, blackboard.ball_pos.x - blackboard.my_pos.pos.x) - blackboard.my_pos.yaw + math.pi) % (2 * math.pi) - math.pi)
+        vw = blackboard.controller.kp_angular * ((math.atan2(blackboard.ball_pos.y - blackboard.my_pos.pos.y, blackboard.ball_pos.x - blackboard.my_pos.pos.x) - blackboard.my_pos.yaw + math.pi) % (2 * math.pi) - math.pi) # type: ignore
         
         blackboard.action.send_command(robot_id=blackboard.my_id, v_forward=vf, v_left=vl, vw=max(min(vw, 5.0), -5.0), kick_speed=0.0, dribbler_speed=0.0)
         return NodeState.RUNNING
@@ -774,7 +774,7 @@ class ActionLateral(Node):
 
         vf, vl, vw = blackboard.controller.calculate_velocity(
             blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw, alvo_x, alvo_y, blackboard.obstacles)
-        vw = blackboard.controller.kp_angular * ((math.atan2(blackboard.ball_pos.y - blackboard.my_pos.pos.y, blackboard.ball_pos.x - blackboard.my_pos.pos.x) - blackboard.my_pos.yaw + math.pi) % (2 * math.pi) - math.pi)
+        vw = blackboard.controller.kp_angular * ((math.atan2(blackboard.ball_pos.y - blackboard.my_pos.pos.y, blackboard.ball_pos.x - blackboard.my_pos.pos.x) - blackboard.my_pos.yaw + math.pi) % (2 * math.pi) - math.pi) # type: ignore
         
         blackboard.action.send_command(robot_id=blackboard.my_id, v_forward=vf, v_left=vl, vw=max(min(vw, 5.0), -5.0), kick_speed=0.0, dribbler_speed=0.0)
         return NodeState.RUNNING

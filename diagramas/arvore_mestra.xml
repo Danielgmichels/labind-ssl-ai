@@ -1,0 +1,363 @@
+<?xml version="1.0" ?>
+<root main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <Selector>
+      <Sequence>
+        <Condition ID="ConditionCheckRole" role_name="GOLEIRO"/>
+        <Selector>
+          <Sequence>
+            <Condition ID="ConditionIsHalted"/>
+            <Action ID="ActionStopMotors"/>
+          </Sequence>
+          <Sequence>
+            <Condition ID="ConditionIsBallSafeToClear"/>
+            <Action ID="ActionClearBall"/>
+          </Sequence>
+          <Action ID="ActionDefendGoal"/>
+        </Selector>
+      </Sequence>
+      <Sequence>
+        <Condition ID="ConditionCheckRole" role_name="ATACANTE"/>
+        <Selector>
+          <Sequence>
+            <Condition ID="ConditionIsHalted"/>
+            <Action ID="ActionStopMotors"/>
+          </Sequence>
+          <Sequence>
+            <Condition ID="ConditionIsOurPrepareKickoff"/>
+            <Action ID="ActionPrepareKickoff"/>
+          </Sequence>
+          <Sequence>
+            <Condition ID="ConditionIsEnemyPrepareKickoff"/>
+            <Action ID="ActionPositionForKickoff" x_offset="0.8" y_offset="0.0"/>
+          </Sequence>
+          <Sequence>
+            <Condition ID="ConditionIsEnemyFreeKick"/>
+            <Action ID="ActionMarkEnemy" indice_inimigo="6"/>
+          </Sequence>
+          <Sequence>
+            <Condition ID="ConditionIsOurFreeKick"/>
+            <Selector>
+              <Sequence>
+                <Condition ID="ConditionIsNearBall"/>
+                <Condition ID="ConditionIsPassClear"/>
+                <Action ID="ActionPassBall"/>
+              </Sequence>
+              <Sequence>
+                <Condition ID="ConditionIsNearBall"/>
+                <Action ID="ActionCrossToBox"/>
+              </Sequence>
+              <Action ID="ActionGoToBall"/>
+            </Selector>
+          </Sequence>
+          <Sequence>
+            <Selector>
+              <Condition ID="ConditionIsGameRunning"/>
+              <Condition ID="ConditionIsOurFreeKick"/>
+            </Selector>
+            <Selector>
+              <Sequence>
+                <Condition ID="ConditionIsPassArriving"/>
+                <Action ID="ActionInterceptPass"/>
+              </Sequence>
+              <Sequence>
+                <Condition ID="ConditionIsNearBall"/>
+                <Condition ID="ConditionIsInShootingZone"/>
+                <Condition ID="ConditionIsPathClear"/>
+                <Action ID="ActionAimAndShoot"/>
+              </Sequence>
+              <Sequence>
+                <Condition ID="ConditionIsNearBall"/>
+                <Condition ID="ConditionIsPassClear"/>
+                <Action ID="ActionPassBall"/>
+              </Sequence>
+              <Sequence>
+                <Condition ID="ConditionIsNearBall"/>
+                <Condition ID="ConditionIsInShootingZone"/>
+                <Action ID="ActionFindShootingAngle"/>
+              </Sequence>
+              <Sequence>
+                <Condition ID="ConditionIsNearBall"/>
+                <Action ID="ActionSmartDribble"/>
+              </Sequence>
+              <Action ID="ActionGoToBall"/>
+            </Selector>
+          </Sequence>
+        </Selector>
+      </Sequence>
+      <Sequence>
+        <Condition ID="ConditionCheckRole" role_name="ATACANTE_APOIO_ESQ"/>
+        <Selector>
+          <Sequence>
+            <Condition ID="ConditionIsHalted"/>
+            <Action ID="ActionStopMotors"/>
+          </Sequence>
+          <Sequence>
+            <Selector>
+              <Condition ID="ConditionIsOurPrepareKickoff"/>
+              <Condition ID="ConditionIsEnemyPrepareKickoff"/>
+            </Selector>
+            <Action ID="ActionPositionForKickoff" x_offset="1.5" y_offset="2.5"/>
+          </Sequence>
+          <Sequence>
+            <Condition ID="ConditionIsEnemyFreeKick"/>
+            <Action ID="ActionMarkEnemy" indice_inimigo="4"/>
+          </Sequence>
+          <Sequence>
+            <Condition ID="ConditionIsOurFreeKick"/>
+            <Action ID="ActionPositionForShortPass" distancia="1.5"/>
+          </Sequence>
+          <Sequence>
+            <Condition ID="ConditionIsGameRunning"/>
+            <Selector>
+              <Sequence>
+                <Condition ID="ConditionIsPassArriving"/>
+                <Action ID="ActionInterceptPass"/>
+              </Sequence>
+              <Action ID="ActionPositionForPass" lado_y="2.5"/>
+            </Selector>
+          </Sequence>
+          <Action ID="ActionStopMotors"/>
+        </Selector>
+      </Sequence>
+      <Sequence>
+        <Condition ID="ConditionCheckRole" role_name="ATACANTE_APOIO_DIR"/>
+        <Selector>
+          <Sequence>
+            <Condition ID="ConditionIsHalted"/>
+            <Action ID="ActionStopMotors"/>
+          </Sequence>
+          <Sequence>
+            <Selector>
+              <Condition ID="ConditionIsOurPrepareKickoff"/>
+              <Condition ID="ConditionIsEnemyPrepareKickoff"/>
+            </Selector>
+            <Action ID="ActionPositionForKickoff" x_offset="1.5" y_offset="-2.5"/>
+          </Sequence>
+          <Sequence>
+            <Condition ID="ConditionIsEnemyFreeKick"/>
+            <Action ID="ActionMarkEnemy" indice_inimigo="5"/>
+          </Sequence>
+          <Sequence>
+            <Condition ID="ConditionIsOurFreeKick"/>
+            <Action ID="ActionPositionForShortPass" distancia="1.5"/>
+          </Sequence>
+          <Sequence>
+            <Condition ID="ConditionIsGameRunning"/>
+            <Selector>
+              <Sequence>
+                <Condition ID="ConditionIsPassArriving"/>
+                <Action ID="ActionInterceptPass"/>
+              </Sequence>
+              <Action ID="ActionPositionForPass" lado_y="-2.5"/>
+            </Selector>
+          </Sequence>
+          <Action ID="ActionStopMotors"/>
+        </Selector>
+      </Sequence>
+      <Sequence>
+        <Condition ID="ConditionCheckRole" role_name="MEIA_ARMADOR"/>
+        <Selector>
+          <Sequence>
+            <Condition ID="ConditionIsHalted"/>
+            <Action ID="ActionStopMotors"/>
+          </Sequence>
+          <Sequence>
+            <Selector>
+              <Condition ID="ConditionIsOurPrepareKickoff"/>
+              <Condition ID="ConditionIsEnemyPrepareKickoff"/>
+            </Selector>
+            <Action ID="ActionPositionForKickoff" x_offset="2.5" y_offset="0.0"/>
+          </Sequence>
+          <Sequence>
+            <Condition ID="ConditionIsEnemyFreeKick"/>
+            <Action ID="ActionMarkEnemy" indice_inimigo="3"/>
+          </Sequence>
+          <Sequence>
+            <Condition ID="ConditionIsOurFreeKick"/>
+            <Action ID="ActionPositionForShortPass" distancia="1.5"/>
+          </Sequence>
+          <Sequence>
+            <Condition ID="ConditionIsGameRunning"/>
+            <Action ID="ActionMeiaArmador"/>
+          </Sequence>
+          <Action ID="ActionStopMotors"/>
+        </Selector>
+      </Sequence>
+      <Sequence>
+        <Condition ID="ConditionCheckRole" role_name="MEIO_CAMPO"/>
+        <Selector>
+          <Sequence>
+            <Condition ID="ConditionIsHalted"/>
+            <Action ID="ActionStopMotors"/>
+          </Sequence>
+          <Sequence>
+            <Selector>
+              <Condition ID="ConditionIsOurPrepareKickoff"/>
+              <Condition ID="ConditionIsEnemyPrepareKickoff"/>
+            </Selector>
+            <Action ID="ActionPositionForKickoff" x_offset="3.5" y_offset="0.0"/>
+          </Sequence>
+          <Sequence>
+            <Condition ID="ConditionIsEnemyFreeKick"/>
+            <Action ID="ActionMarkEnemy" indice_inimigo="0"/>
+          </Sequence>
+          <Sequence>
+            <Selector>
+              <Condition ID="ConditionIsGameRunning"/>
+              <Condition ID="ConditionIsOurFreeKick"/>
+            </Selector>
+            <Action ID="ActionMidfieldSupport"/>
+          </Sequence>
+          <Action ID="ActionStopMotors"/>
+        </Selector>
+      </Sequence>
+      <Sequence>
+        <Condition ID="ConditionCheckRole" role_name="VOLANTE"/>
+        <Selector>
+          <Sequence>
+            <Condition ID="ConditionIsHalted"/>
+            <Action ID="ActionStopMotors"/>
+          </Sequence>
+          <Sequence>
+            <Selector>
+              <Condition ID="ConditionIsOurPrepareKickoff"/>
+              <Condition ID="ConditionIsEnemyPrepareKickoff"/>
+            </Selector>
+            <Action ID="ActionPositionForKickoff" x_offset="4.5" y_offset="0.0"/>
+          </Sequence>
+          <Sequence>
+            <Condition ID="ConditionIsEnemyFreeKick"/>
+            <Action ID="ActionFormDefensiveWall" offset_lateral="-0.18"/>
+          </Sequence>
+          <Sequence>
+            <Selector>
+              <Condition ID="ConditionIsGameRunning"/>
+              <Condition ID="ConditionIsOurFreeKick"/>
+            </Selector>
+            <Action ID="ActionVolanteDefensivo"/>
+          </Sequence>
+          <Action ID="ActionStopMotors"/>
+        </Selector>
+      </Sequence>
+      <Sequence>
+        <Condition ID="ConditionCheckRole" role_name="LATERAL_ESQUERDO"/>
+        <Selector>
+          <Sequence>
+            <Condition ID="ConditionIsHalted"/>
+            <Action ID="ActionStopMotors"/>
+          </Sequence>
+          <Sequence>
+            <Selector>
+              <Condition ID="ConditionIsOurPrepareKickoff"/>
+              <Condition ID="ConditionIsEnemyPrepareKickoff"/>
+            </Selector>
+            <Action ID="ActionPositionForKickoff" x_offset="3.0" y_offset="3.5"/>
+          </Sequence>
+          <Sequence>
+            <Condition ID="ConditionIsEnemyFreeKick"/>
+            <Action ID="ActionMarkEnemy" indice_inimigo="1"/>
+          </Sequence>
+          <Sequence>
+            <Condition ID="ConditionIsOurFreeKick"/>
+            <Action ID="ActionPositionForCross" y_offset="3.5"/>
+          </Sequence>
+          <Sequence>
+            <Condition ID="ConditionIsGameRunning"/>
+            <Action ID="ActionLateral" lado_y="3.5"/>
+          </Sequence>
+          <Action ID="ActionStopMotors"/>
+        </Selector>
+      </Sequence>
+      <Sequence>
+        <Condition ID="ConditionCheckRole" role_name="LATERAL_DIREITO"/>
+        <Selector>
+          <Sequence>
+            <Condition ID="ConditionIsHalted"/>
+            <Action ID="ActionStopMotors"/>
+          </Sequence>
+          <Sequence>
+            <Selector>
+              <Condition ID="ConditionIsOurPrepareKickoff"/>
+              <Condition ID="ConditionIsEnemyPrepareKickoff"/>
+            </Selector>
+            <Action ID="ActionPositionForKickoff" x_offset="3.0" y_offset="-3.5"/>
+          </Sequence>
+          <Sequence>
+            <Condition ID="ConditionIsEnemyFreeKick"/>
+            <Action ID="ActionMarkEnemy" indice_inimigo="2"/>
+          </Sequence>
+          <Sequence>
+            <Condition ID="ConditionIsOurFreeKick"/>
+            <Action ID="ActionPositionForCross" y_offset="-3.5"/>
+          </Sequence>
+          <Sequence>
+            <Condition ID="ConditionIsGameRunning"/>
+            <Action ID="ActionLateral" lado_y="-3.5"/>
+          </Sequence>
+          <Action ID="ActionStopMotors"/>
+        </Selector>
+      </Sequence>
+      <Sequence>
+        <Condition ID="ConditionCheckRole" role_name="ZAGUEIRO_BLOQUEIO"/>
+        <Selector>
+          <Sequence>
+            <Condition ID="ConditionIsHalted"/>
+            <Action ID="ActionStopMotors"/>
+          </Sequence>
+          <Sequence>
+            <Selector>
+              <Condition ID="ConditionIsOurPrepareKickoff"/>
+              <Condition ID="ConditionIsEnemyPrepareKickoff"/>
+            </Selector>
+            <Action ID="ActionPositionForKickoff" x_offset="5.0" y_offset="1.5"/>
+          </Sequence>
+          <Sequence>
+            <Condition ID="ConditionIsEnemyFreeKick"/>
+            <Action ID="ActionFormDefensiveWall" offset_lateral="0.0"/>
+          </Sequence>
+          <Sequence>
+            <Selector>
+              <Condition ID="ConditionIsGameRunning"/>
+              <Condition ID="ConditionIsOurFreeKick"/>
+            </Selector>
+            <Action ID="ActionZagueiroBloqueio"/>
+          </Sequence>
+          <Action ID="ActionStopMotors"/>
+        </Selector>
+      </Sequence>
+      <Sequence>
+        <Condition ID="ConditionCheckRole" role_name="ZAGUEIRO_MARCACAO"/>
+        <Selector>
+          <Sequence>
+            <Condition ID="ConditionIsHalted"/>
+            <Action ID="ActionStopMotors"/>
+          </Sequence>
+          <Sequence>
+            <Selector>
+              <Condition ID="ConditionIsOurPrepareKickoff"/>
+              <Condition ID="ConditionIsEnemyPrepareKickoff"/>
+            </Selector>
+            <Action ID="ActionPositionForKickoff" x_offset="5.0" y_offset="-1.5"/>
+          </Sequence>
+          <Sequence>
+            <Condition ID="ConditionIsEnemyFreeKick"/>
+            <Action ID="ActionFormDefensiveWall" offset_lateral="0.18"/>
+          </Sequence>
+          <Sequence>
+            <Selector>
+              <Condition ID="ConditionIsGameRunning"/>
+              <Condition ID="ConditionIsOurFreeKick"/>
+            </Selector>
+            <Action ID="ActionZagueiroMarcacao"/>
+          </Sequence>
+          <Action ID="ActionStopMotors"/>
+        </Selector>
+      </Sequence>
+      <Sequence>
+        <Condition ID="ConditionCheckRole" role_name="ESPERA"/>
+        <Action ID="ActionStopMotors"/>
+      </Sequence>
+    </Selector>
+  </BehaviorTree>
+</root>

@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root BTCPP_format="3" project_name="Project">
+    <include path="../diagramas/arvore_mestra.xml"/>
+    <!-- Description of Node Models (used by Groot) -->
+    <TreeNodesModel>
+        <Action ID="ActionAimAndShoot"/>
+        <Action ID="ActionClearBall"/>
+        <Action ID="ActionCrossToBox"/>
+        <Action ID="ActionDefendGoal"/>
+        <Action ID="ActionFindShootingAngle"/>
+        <Action ID="ActionFormDefensiveWall">
+            <input_port name="offset_lateral"/>
+        </Action>
+        <Action ID="ActionGoToBall"/>
+        <Action ID="ActionInterceptPass"/>
+        <Action ID="ActionLateral">
+            <input_port name="lado_y"/>
+        </Action>
+        <Action ID="ActionMarkEnemy">
+            <input_port name="indice_inimigo"/>
+        </Action>
+        <Action ID="ActionMeiaArmador"/>
+        <Action ID="ActionMidfieldSupport"/>
+        <Action ID="ActionPassBall"/>
+        <Action ID="ActionPositionForCross">
+            <input_port name="y_offset"/>
+        </Action>
+        <Action ID="ActionPositionForKickoff">
+            <input_port name="x_offset"/>
+            <input_port name="y_offset"/>
+        </Action>
+        <Action ID="ActionPositionForPass">
+            <input_port name="lado_y"/>
+        </Action>
+        <Action ID="ActionPositionForShortPass">
+            <input_port name="angulo_graus"/>
+            <input_port name="distancia"/>
+        </Action>
+        <Action ID="ActionPrepareKickoff"/>
+        <Action ID="ActionSmartDribble"/>
+        <Action ID="ActionStopMotors"/>
+        <Action ID="ActionVolanteDefensivo"/>
+        <Action ID="ActionZagueiroBloqueio"/>
+        <Action ID="ActionZagueiroMarcacao"/>
+        <Condition ID="ConditionCheckRole">
+            <input_port name="role_name"/>
+        </Condition>
+        <Condition ID="ConditionIsBallSafeToClear"/>
+        <Condition ID="ConditionIsEnemyFreeKick"/>
+        <Condition ID="ConditionIsEnemyPrepareKickoff"/>
+        <Condition ID="ConditionIsGameRunning"/>
+        <Condition ID="ConditionIsHalted"/>
+        <Condition ID="ConditionIsInShootingZone"/>
+        <Condition ID="ConditionIsNearBall"/>
+        <Condition ID="ConditionIsOurFreeKick"/>
+        <Condition ID="ConditionIsOurPrepareKickoff"/>
+        <Condition ID="ConditionIsPassArriving"/>
+        <Condition ID="ConditionIsPassClear"/>
+        <Condition ID="ConditionIsPathClear"/>
+        <Control ID="Selector" editable="true"/>
+    </TreeNodesModel>
+</root>

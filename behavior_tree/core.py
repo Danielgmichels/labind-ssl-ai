@@ -1,5 +1,8 @@
 import os
 from enum import Enum
+import inspect
+from xml.etree.ElementTree import Element, SubElement, tostring, Comment
+from xml.dom import minidom
 
 # ==========================================
 # ESTADOS DOS NÓS
@@ -119,5 +122,75 @@ def export_tree_to_dot(node, filename="arvore_tatica.dot"):
         f.write('    node [shape=box, style="filled,rounded", fontname="Arial", color="#000000", penwidth=1];\n')
         _write_dot_node(node, f)
         f.write("}\n")
-        
+
     print(f"Árvore exportada com sucesso para {filename}!")
+
+def export_tree_to_xml(node, filename="arvore_tatica.xml"):
+    """Gera um arquivo XML da árvore de comportamento que é compatível com o editor Groot."""
+
+    def _get_node_params(current_node):
+        """Inspeciona o __init__ do nó e captura os valores atuais de seus parâmetros."""
+        params = {}
+        try:
+            sig = inspect.signature(current_node.__init__)
+            for param_name in sig.parameters: # A correção está na linha abaixo
+                if param_name not in ['self', 'children'] and hasattr(current_node, param_name):
+                    value = getattr(current_node, param_name)
+                    # Converte tipos Python para string, que é o que o XML usa
+                    params[param_name] = str(value)
+        except (ValueError, TypeError):
+            pass # Normal para nós sem __init__ customizado
+        return params
+
+    def _write_xml_node(current_node, parent_element):
+        """Função recursiva que escreve o XML para um nó e seus filhos."""
+        node_name = current_node.__class__.__name__
+        
+        # Determina a tag XML baseada no tipo da classe
+        if isinstance(current_node, Selector):
+            tag = 'Selector'
+        elif isinstance(current_node, Sequence):
+            tag = 'Sequence'
+        elif node_name.startswith('Action'):
+            tag = 'Action'
+        elif node_name.startswith('Condition'):
+            tag = 'Condition'
+        else:
+            tag = 'Unknown'
+            parent_element.append(Comment(f"Nó {node_name} não reconhecido."))
+
+        # Atributos do nó no XML
+        attrs = {}
+        if tag in ['Action', 'Condition']:
+            attrs['ID'] = node_name
+        
+        # Adiciona os parâmetros específicos da instância (ex: lado_y="-3.5")
+        instance_params = _get_node_params(current_node)
+        attrs.update(instance_params)
+
+        xml_element = SubElement(parent_element, tag, attrs)
+
+        # Chama a função recursivamente para os filhos
+        if hasattr(current_node, 'children'):
+            for child in current_node.children:
+                _write_xml_node(child, xml_element)
+
+    # Estrutura principal do arquivo XML que o Groot espera
+    root = Element('root', main_tree_to_execute="MainTree")
+    behavior_tree = SubElement(root, 'BehaviorTree', {'ID': 'MainTree'})
+
+    # Inicia o processo de escrita recursiva
+    _write_xml_node(node, behavior_tree)
+
+    # Formata e salva o arquivo
+    xml_str = tostring(root, 'utf-8')
+    pretty_xml_str = minidom.parseString(xml_str).toprettyxml(indent="  ")
+    
+    diretorio = os.path.dirname(filename)
+    if diretorio:
+        os.makedirs(diretorio, exist_ok=True)
+
+    with open(filename, 'w', encoding='utf-8') as f:
+        f.write(pretty_xml_str)
+        
+    print(f"Árvore exportada com sucesso para XML em {filename}!")
