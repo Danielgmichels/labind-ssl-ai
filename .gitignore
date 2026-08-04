@@ -1,11 +1,13 @@
+# Ambientes Virtuais
+*venv/
+venv/
+.venv/
+
 # Arquivos compilados do Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-
-# Arquivos do sistema
-.DS_Store
 
 # Arquivos de visualização e projetos temporários
 *.dot

@@ -108,6 +108,14 @@ class ProportionalController:
         
         fator_foco = min(dist_bola / dist_segura_dinamica, 1.0)
         
+        # --- A CORREÇÃO DO PÂNICO ---
+        # Normaliza o vetor de atração para saber para onde estamos querendo ir.
+        # Isso nos permite ignorar inimigos que estão nas nossas costas.
+        dir_mov_x, dir_mov_y = 0.0, 0.0
+        if mag_attr > 0:
+            dir_mov_x = vx_global / mag_attr
+            dir_mov_y = vy_global / mag_attr
+        
         for obs in obstacles:
             dx = robot_x - obs.pos.x  
             dy = robot_y - obs.pos.y
@@ -127,6 +135,18 @@ class ProportionalController:
                 kr_atual = kr_dinamico
                 fator_foco_atual = fator_foco
             
+            # --- NOVO: Checagem de "Obstáculo Frontal" ---
+            # Se o obstáculo não for uma parede, verificamos se ele está na nossa frente.
+            if not is_wall:
+                # Vetor do robô para o obstáculo
+                vetor_para_obs_x = obs.pos.x - robot_x
+                vetor_para_obs_y = obs.pos.y - robot_y
+                
+                # Produto escalar: se for < 0, o obstáculo está atrás. Ignoramos!
+                dot_product = (dir_mov_x * vetor_para_obs_x) + (dir_mov_y * vetor_para_obs_y)
+                if dot_product < 0:
+                    continue
+
             # Aplica a força dependendo do tipo de obstáculo
             if 0.01 < dist_obs < dist_segura_atual:
                 dist_calc = max(dist_obs, 0.15) 
@@ -256,6 +276,7 @@ class Blackboard:
         self.my_pos = None    
         self.ball_pos = None  
         self.obstacles = []   
+        self.papeis = {}      # <--- A CORREÇÃO ESTÁ AQUI!
 
         self.ball_vel_x = 0.0
         self.ball_vel_y = 0.0

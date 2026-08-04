@@ -299,8 +299,24 @@ class ConditionIsPassClear(Node):
                         break
                         
             if caminho_limpo:
-                # Achou o primeiro alvo limpo da lista! Salva e chuta.
-                blackboard.pass_target = alvo_pos
+                # Achou o primeiro alvo limpo! Agora, vamos definir o PONTO DE ENCONTRO.
+                direcao = 1 if blackboard.enemy_goal_x > 0 else -1
+                pass_x, pass_y = 0.0, 0.0
+
+                # Para papéis com posição ESTÁTICA, calculamos o ponto ideal.
+                if papel == "ATACANTE_APOIO_ESQ":
+                    pass_x = blackboard.enemy_goal_x - (direcao * 2.5)
+                    pass_y = 2.5
+                elif papel == "ATACANTE_APOIO_DIR":
+                    pass_x = blackboard.enemy_goal_x - (direcao * 2.5)
+                    pass_y = -2.5
+                # Para papéis DINÂMICOS, o melhor é passar para a posição atual deles.
+                else:
+                    pass_x = alvo_pos.pos.x
+                    pass_y = alvo_pos.pos.y
+                
+                # Salvamos o ponto (x,y) no blackboard para a Ação de Passe usar.
+                blackboard.pass_target_point = (pass_x, pass_y)
                 return NodeState.SUCCESS
                 
         return NodeState.FAILURE

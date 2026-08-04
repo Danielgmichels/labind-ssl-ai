@@ -305,13 +305,15 @@ class ActionPassBall(Node):
     Calcula a força ideal do chute baseada na distância para não espirrar a bola.
     """
     def tick(self, blackboard):
-        if blackboard.my_pos is None or not hasattr(blackboard, 'pass_target'):
+        # Agora ele procura pelo ponto (x,y) salvo pela condição
+        if blackboard.my_pos is None or not hasattr(blackboard, 'pass_target_point'):
             return NodeState.FAILURE
             
-        alvo = blackboard.pass_target
+        # Lê o ponto de encontro do blackboard
+        alvo_x, alvo_y = blackboard.pass_target_point
         
-        target_angle = math.atan2(alvo.pos.y - blackboard.my_pos.pos.y, 
-                                  alvo.pos.x - blackboard.my_pos.pos.x)
+        target_angle = math.atan2(alvo_y - blackboard.my_pos.pos.y, 
+                                  alvo_x - blackboard.my_pos.pos.x)
         erro_angular = target_angle - blackboard.my_pos.yaw
         erro_angular = (erro_angular + math.pi) % (2 * math.pi) - math.pi
         
@@ -329,7 +331,8 @@ class ActionPassBall(Node):
             vw = 0.0
             vl = 0.0
             
-            dist_passe = math.hypot(alvo.pos.x - blackboard.my_pos.pos.x, alvo.pos.y - blackboard.my_pos.pos.y)
+            # Calcula a distância até o ponto de encontro para definir a força
+            dist_passe = math.hypot(alvo_x - blackboard.my_pos.pos.x, alvo_y - blackboard.my_pos.pos.y)
             velocidade_chute = min(dist_passe * 1.9, 6.0) 
             
             # FREIA O ROBÔ: Garante que a bola bata limpa no chutador e não nas rodas
