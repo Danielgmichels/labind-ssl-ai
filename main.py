@@ -282,6 +282,10 @@ class Blackboard:
         self.ball_vel_y = 0.0
         self.last_ball_pos = None
         self.last_ball_time = time.time()
+
+        self.teste_trocas = 0
+        self.teste_distancia = 0.0
+        self.pos_anteriores_alas = {}
         
         # O Muro Físico das áreas gerado apenas uma vez
         self.defense_walls = create_solid_defense_walls() 
@@ -620,6 +624,55 @@ def build_master_tree():
         Sequence([ConditionCheckRole("ESPERA"), build_espera_tree()])
     ])
 
+def teleporta_robo_simulador(id_robo, is_yellow, x, y, yaw, ip="127.0.0.1", port=20011):
+    """Função global para teleportar um robô instantaneamente no grSim."""
+    packet = grSim_Packet_pb2.grSim_Packet()
+    
+    robo = packet.replacement.robots.add()
+    robo.x = x
+    robo.y = y
+    robo.dir = yaw
+    robo.id = id_robo
+    robo.yellowteam = is_yellow
+    robo.turnon = True # Garante que ele apareça ligado
+    
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.sendto(packet.SerializeToString(), (ip, port))
+
+def setup_cenario_a():
+    """Prepara uma transição ofensiva longa (de área a área)."""
+    print("--- MONTANDO CENÁRIO A ---")
+    
+    # 1. Teleporta a bola pra nossa defesa
+    teleporta_bola_simulador(0.0, 0.0) 
+    
+    # 2. Teleporta os Atores Principais (Amarelos)
+    teleporta_robo_simulador(1, True, 4.2, 0.0, 0.0)  # Atacante (atrás da bola)
+    teleporta_robo_simulador(2, True, 4.2, 1.5, 0.0)  # Ala Esquerda (Y positivo)
+    teleporta_robo_simulador(3, True, 4.2, -1.5, 0.0) # Ala Direita (Y negativo)
+    
+    # 3. Prende o resto do time na nossa área pra não sujarem o teste
+    for i in range(4, 12):
+        teleporta_robo_simulador(i, True, 5.5, 0.0, 0.0) 
+        
+    # 4. Coloca 3 cones de treino (Inimigos parados) no meio do caminho
+    teleporta_robo_simulador(0, False, -5.7, 0.0, 0.0)
+    teleporta_robo_simulador(1, False, -1.0, 0.2, 0.0)
+    teleporta_robo_simulador(2, False, -1.5, -0.5, 0.0)
+    teleporta_robo_simulador(3, False, -3.5, 0.5, 0.0)
+    teleporta_robo_simulador(4, False, -2.0, -3.0, 0.0)
+    teleporta_robo_simulador(5, False, -2.5, 2.0, 0.0)
+    teleporta_robo_simulador(6, False, -0.7, -2.0, 0.0)
+    teleporta_robo_simulador(7, False, -0.7, 2.0, 0.0)
+    teleporta_robo_simulador(8, False, -4.0, -1.5, 0.0)
+    teleporta_robo_simulador(9, False, -3.0, -0.7, 0.0)
+    teleporta_robo_simulador(10, False, -1.0, 3.3, 0.0)
+
+
+
+
+
+
 # ==========================================
 # LOOP PRINCIPAL (Integração)
 # ==========================================
@@ -665,6 +718,8 @@ def main():
     # Gera os diagramas visuais!
     arvore_mestra = build_master_tree()
     export_tree_to_xml(arvore_mestra, "diagramas/arvore_mestra.xml")
+
+    setup_cenario_a()
     
     while True:
         start_time = time.time()
@@ -693,7 +748,7 @@ def main():
                 nova_posicao = (desig_x, desig_y)
                 posicao_anterior = getattr(bb, 'designated_position', None)
                 if posicao_anterior != nova_posicao:
-                    print(f"⚽ Sumatra/AutoRef: Reposicionando a bola para X:{desig_x:.2f}, Y:{desig_y:.2f}")
+                    # print(f"⚽ Sumatra/AutoRef: Reposicionando a bola para X:{desig_x:.2f}, Y:{desig_y:.2f}")
                     teleporta_bola_simulador(desig_x, desig_y)
                     bb.designated_position = nova_posicao
             
@@ -790,17 +845,64 @@ def main():
                     # 2. Aciona o Cérebro correto dependendo do papel
                     arvore_mestra.tick(bb)
                         
+            # ==========================================
+            # COLETOR DE DADOS INTELIGENTE (Cenário A)
+            # ==========================================
+            if not getattr(bb, 'teste_concluido', False):
+                # 1. Condição de Início (Juiz apitou o início da jogada)
+                if not getattr(bb, 'teste_rodando', False) and bb.referee_command in ["NORMAL_START", "FORCE_START"]:
+                    print("\n▶️ TESTE INICIADO! Gravando dados da jogada...")
+                    bb.teste_rodando = True
+                    bb.tempo_inicio_teste = time.time()
+                    bb.teste_trocas = 0
+                    bb.teste_distancia = 0.0
+                    bb.pos_anteriores_alas = {}
+                
+                # 2. Coleta de Dados (Só executa se o cronômetro estiver rodando)
+                if getattr(bb, 'teste_rodando', False):
+                    for robo in team_robots:
+                        r_id = getattr(robo, 'id', -1)
+                        papel_atual = bb.papeis.get(r_id, "")
+                        papel_antigo = papeis_anteriores.get(r_id, "")
+                        
+                        # Conta as trocas
+                        if papel_antigo == "ATACANTE_APOIO_ESQ" and papel_atual == "ATACANTE_APOIO_DIR":
+                            bb.teste_trocas += 1
+                        elif papel_antigo == "ATACANTE_APOIO_DIR" and papel_atual == "ATACANTE_APOIO_ESQ":
+                            bb.teste_trocas += 1
+                            
+                        # Soma a distância ociosa
+                        if papel_atual in ["ATACANTE_APOIO_ESQ", "ATACANTE_APOIO_DIR"]:
+                            pos_antiga = bb.pos_anteriores_alas.get(r_id)
+                            if pos_antiga is not None:
+                                dist = math.hypot(robo.pos.x - pos_antiga[0], robo.pos.y - pos_antiga[1])
+                                bb.teste_distancia += dist
+                            bb.pos_anteriores_alas[r_id] = (robo.pos.x, robo.pos.y)
+                    
+                    # 3. Condição de Parada (Gol ou Tempo Esgotado)
+                    tempo_decorrido = time.time() - bb.tempo_inicio_teste
+                    # Consideramos gol se a bola passar da linha X do gol inimigo (-5.9 ou 5.9)
+                    fez_gol = bb.ball_pos.x < -5.9 if bb.is_yellow else bb.ball_pos.x > 5.9
+                    
+                    if tempo_decorrido > 10.0 or fez_gol:
+                        bb.teste_rodando = False
+                        bb.teste_concluido = True # Trava para não rodar de novo acidentalmente
+                        motivo = "GOL!" if fez_gol else "TEMPO ESGOTADO (10s)"
+                        print(f"\n⏹️ TESTE CONCLUÍDO ({motivo})")
+                        print(f"🏆 RESULTADO FINAL -> Trocas: {bb.teste_trocas} | Distância Ociosa: {bb.teste_distancia:.2f}m | Tempo de ataque: {tempo_decorrido:.2f}s\n")
+
         # ==========================================
-        # PAINEL DE DEBUG (Imprime a cada 1 segundo)
+        # PAINEL DE DEBUG E COLETA UNIFICADO (1 Hz)
         # ==========================================
         if time.time() - last_debug_time > 1.0:
             time_nome = "AMARELO" if bb.is_yellow else "AZUL"
-            print(f"[{time_nome}] Estado do Juiz: {bb.referee_command}")
-            for r_id, papel in bb.papeis.items():
-                print(f"  ID {r_id}: {papel}")
+            # print(f"[{time_nome}] Estado do Juiz: {bb.referee_command}")
+            # for r_id, papel in bb.papeis.items():
+                # print(f"  ID {r_id}: {papel}")
+            print(f"📊 [DADOS CENÁRIO A] Trocas: {bb.teste_trocas} | Dist. Ociosa: {bb.teste_distancia:.2f}m")
             print("-" * 30)
-            last_debug_time = time.time()
-            
+            last_debug_time = time.time()  
+
         # ==========================================
         # CONTROLE DE FPS (60Hz)
         # ==========================================
