@@ -877,7 +877,7 @@ def main():
                     # 3. Condição de Parada (Gol ou Tempo Esgotado)
                     tempo_decorrido = time.time() - bb.tempo_inicio_teste
                     # Consideramos gol se a bola passar da linha X do gol inimigo (-5.9 ou 5.9)
-                    fez_gol = bb.ball_pos.x < -5.9 if bb.is_yellow else bb.ball_pos.x > 5.9
+                    fez_gol = bb.ball_pos.x < -5.9 and bb.ball_pos.y < 1.0 and bb.ball_pos.y > -1.0 if bb.is_yellow else bb.ball_pos.x > 5.9
                     
                     if tempo_decorrido > 10.0 or fez_gol:
                         bb.teste_rodando = False
