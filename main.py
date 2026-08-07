@@ -620,6 +620,43 @@ def build_master_tree():
         Sequence([ConditionCheckRole("ESPERA"), build_espera_tree()])
     ])
 
+def teleporta_robo_simulador(id_robo, is_yellow, x, y, yaw, ip="127.0.0.1", port=20011):
+    """Função global para teleportar um robô instantaneamente no grSim."""
+    packet = grSim_Packet_pb2.grSim_Packet()
+    
+    robo = packet.replacement.robots.add()
+    robo.x = x
+    robo.y = y
+    robo.dir = yaw
+    robo.id = id_robo
+    robo.yellowteam = is_yellow
+    robo.turnon = True # Garante que ele apareça ligado
+    
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.sendto(packet.SerializeToString(), (ip, port))
+
+def setup_cenario_b():
+    """Prepara o robô para uma arrancada sendo "perseguido" por inimigos."""
+    print("--- MONTANDO CENÁRIO B (Filtro APF) ---")
+    
+    # 1. Bola no ataque (alvo)
+    teleporta_bola_simulador(0.0, 0.0) 
+    
+    # 2. Nosso testador (Atacante) no meio campo
+    teleporta_robo_simulador(1, True, 1.0, 0.0, 0.0)  
+    
+    # Prende o resto do nosso time no escanteio para não atrapalhar
+    for i in range(2, 12):
+        teleporta_robo_simulador(i, True, 7.5, -1.0, 0.0) 
+        
+    # 3. Os "Fantasmas" nas costas do atacante (Um na esquerda, um no centro)
+    # Essa assimetria é o que vai fazer o APF clássico entortar a trajetória!
+    teleporta_robo_simulador(1, False, 1.4, 0.3, 0.0) 
+    teleporta_robo_simulador(2, False, 1.4, -0.05, 0.0)
+    
+    # Prende o resto dos inimigos no outro escanteio
+    for i in range(3, 12):
+        teleporta_robo_simulador(i, False, 7.5, 1.0, 0.0)
 # ==========================================
 # LOOP PRINCIPAL (Integração)
 # ==========================================
@@ -665,7 +702,9 @@ def main():
     # Gera os diagramas visuais!
     arvore_mestra = build_master_tree()
     export_tree_to_xml(arvore_mestra, "diagramas/arvore_mestra.xml")
-    
+
+    setup_cenario_b()
+
     while True:
         start_time = time.time()
         
@@ -791,15 +830,46 @@ def main():
                     arvore_mestra.tick(bb)
                         
         # ==========================================
-        # PAINEL DE DEBUG (Imprime a cada 1 segundo)
-        # ==========================================
-        if time.time() - last_debug_time > 1.0:
-            time_nome = "AMARELO" if bb.is_yellow else "AZUL"
-            print(f"[{time_nome}] Estado do Juiz: {bb.referee_command}")
-            for r_id, papel in bb.papeis.items():
-                print(f"  ID {r_id}: {papel}")
-            print("-" * 30)
-            last_debug_time = time.time()
+            # COLETOR DE DADOS INTELIGENTE (Cenário B - APF)
+            # ==========================================
+            if not getattr(bb, 'teste_concluido', False):
+                # 1. Condição de Início (Juiz apitou)
+                if not getattr(bb, 'teste_rodando', False) and bb.referee_command in ["NORMAL_START", "FORCE_START"]:
+                    print("\n▶️ TESTE B INICIADO! Gravando trajeto do Atacante...")
+                    bb.teste_rodando = True
+                    bb.tempo_inicio_teste = time.time()
+                    bb.distancia_percorrida = 0.0
+                    bb.pos_anterior_atacante = None
+                
+                # 2. Coleta de Dados
+                if getattr(bb, 'teste_rodando', False):
+                    # Procura apenas o nosso Atacante (ID 1)
+                    for robo in team_robots:
+                        if getattr(robo, 'id', -1) == 1:
+                            pos_atual = (robo.pos.x, robo.pos.y)
+                            
+                            # Soma a distância percorrida
+                            if getattr(bb, 'pos_anterior_atacante', None) is not None:
+                                dist = math.hypot(pos_atual[0] - bb.pos_anterior_atacante[0], 
+                                                  pos_atual[1] - bb.pos_anterior_atacante[1])
+                                bb.distancia_percorrida += dist
+                            
+                            bb.pos_anterior_atacante = pos_atual
+                            break
+                    
+                    # 3. Condição de Parada (Chegou na bola ou estourou tempo)
+                    tempo_decorrido = time.time() - bb.tempo_inicio_teste
+                    # Se o X do robô passar de 3.8, ele chegou no alvo!
+                    chegou_no_alvo = getattr(bb, 'pos_anterior_atacante', (0,0))[0] < -3.5
+                    
+                    if tempo_decorrido > 8.0 or chegou_no_alvo:
+                        bb.teste_rodando = False
+                        bb.teste_concluido = True 
+                        motivo = "ALVO ALCANÇADO!" if chegou_no_alvo else "TEMPO ESGOTADO"
+                        vel_media = bb.distancia_percorrida / tempo_decorrido if tempo_decorrido > 0 else 0
+                        
+                        print(f"\n⏹️ TESTE B CONCLUÍDO ({motivo})")
+                        print(f"🏆 RESULTADO FINAL -> Tempo de trajeto: {tempo_decorrido:.2f}s | Distância real: {bb.distancia_percorrida:.3f}m | Velocidade Média: {vel_media:.2f} m/s\n")
             
         # ==========================================
         # CONTROLE DE FPS (60Hz)
