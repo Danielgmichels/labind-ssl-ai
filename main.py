@@ -7,6 +7,7 @@ import os
 import struct
 import argparse
 from behavior_tree import *
+import matplotlib.pyplot as plt
 
 # Descobre onde o main.py está e aponta para a pasta proto_msg interna
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -286,6 +287,12 @@ class Blackboard:
         self.teste_trocas = 0
         self.teste_distancia = 0.0
         self.pos_anteriores_alas = {}
+        
+        # --- DADOS PARA O GRÁFICO ---
+        self.historico_atacante = []
+        self.historico_alas = {2: [], 3: []} # Rastreador dos robôs 2 e 3
+        self.historico_bola = []
+        self.posicao_inimigos_fixos = []
         
         # O Muro Físico das áreas gerado apenas uma vez
         self.defense_walls = create_solid_defense_walls() 
@@ -639,12 +646,11 @@ def teleporta_robo_simulador(id_robo, is_yellow, x, y, yaw, ip="127.0.0.1", port
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.sendto(packet.SerializeToString(), (ip, port))
 
-def setup_cenario_a():
-    """Prepara uma transição ofensiva longa (de área a área)."""
-    print("--- MONTANDO CENÁRIO A ---")
+def setup_cenario_coordenacao():
+    print("--- MONTANDO CENÁRIO COORDENAÇÃO ---")
     
     # 1. Teleporta a bola pra nossa defesa
-    teleporta_bola_simulador(0.0, 0.0) 
+    teleporta_bola_simulador(2.0, 0.0) 
     
     # 2. Teleporta os Atores Principais (Amarelos)
     teleporta_robo_simulador(1, True, 4.2, 0.0, 0.0)  # Atacante (atrás da bola)
@@ -653,7 +659,7 @@ def setup_cenario_a():
     
     # 3. Prende o resto do time na nossa área pra não sujarem o teste
     for i in range(4, 12):
-        teleporta_robo_simulador(i, True, 5.5, 0.0, 0.0) 
+        teleporta_robo_simulador(i, True, 8, 0.0, 0.0) 
         
     # 4. Coloca 3 cones de treino (Inimigos parados) no meio do caminho
     teleporta_robo_simulador(0, False, -5.7, 0.0, 0.0)
@@ -668,11 +674,143 @@ def setup_cenario_a():
     teleporta_robo_simulador(9, False, -3.0, -0.7, 0.0)
     teleporta_robo_simulador(10, False, -1.0, 3.3, 0.0)
 
+def gerar_grafico_colaboracao(bb):
+    print("\n📊 Gerando gráfico com anotações reposicionadas e sem sobreposição...")
+    
+    plt.style.use('default')
+    fig, ax = plt.subplots(figsize=(10.5, 6.5))
+    fig.patch.set_facecolor('white')
+    ax.set_facecolor('#F9F9F9')
+    
+    # 1. Linhas do Campo (Padrão Acadêmico Claro)
+    ax.axvline(0, color='#888888', linestyle='--', linewidth=1, label='Linha Central')
+    ax.add_patch(plt.Rectangle((4.8, -1.2), 1.2, 2.4, fill=False, edgecolor='#666666', linewidth=1.2))
+    ax.add_patch(plt.Rectangle((-6.0, -1.2), 1.2, 2.4, fill=False, edgecolor='#666666', linewidth=1.2))
 
+    # 2. Defesa Adversária (Obstáculos)
+    if bb.posicao_inimigos_fixos:
+        ex = [p[0] for p in bb.posicao_inimigos_fixos]
+        ey = [p[1] for p in bb.posicao_inimigos_fixos]
+        ax.scatter(ex, ey, c='#0099CC', s=140, label='Defesa Adversária', edgecolors='black', linewidth=0.8, zorder=4)
 
+    # 3. Condução Inicial do Atacante (ID 1)
+    if bb.historico_atacante:
+        rastro_conducao = [p for p in bb.historico_atacante if p[0] >= -0.2]
+        if rastro_conducao:
+            axx = [p[0] for p in rastro_conducao]
+            axy = [p[1] for p in rastro_conducao]
+            ax.plot(axx, axy, c='#CC9900', linestyle=':', linewidth=2.2, label='Condução (ID 1)', zorder=3)
+            ax.scatter(axx[0], axy[0], c='#CC9900', s=90, marker='s', edgecolors='black', zorder=5)
 
+    # 4. Infiltração dos Alas (IDs 2 e 3)
+    cores_alas = {2: '#E67E22', 3: '#D35400'}
+    for ala_id, trilha in bb.historico_alas.items():
+        if trilha:
+            alax = [p[0] for p in trilha]
+            alay = [p[1] for p in trilha]
+            label_ala = 'Infiltração dos Alas (IDs 2 e 3)' if ala_id == 2 else ""
+            ax.plot(alax, alay, c=cores_alas[ala_id], linestyle='--', linewidth=1.8, label=label_ala, zorder=2)
+            ax.scatter(alax[0], alay[0], c=cores_alas[ala_id], s=60, marker='s', edgecolors='black', zorder=4)
 
+    # 5. Trajetória da Bola e Detecção Geométrica de Eventos
+    if bb.historico_bola and len(bb.historico_bola) > 10:
+        # A. Início do Passe
+        idx_inicio_passe = 0
+        for i, p in enumerate(bb.historico_bola):
+            if p[0] <= 1.0:
+                idx_inicio_passe = i
+                break
 
+        # B. Quadrante do Passe (Cima Y>0 ou Baixo Y<0)
+        pontos_transicao = [p for p in bb.historico_bola if -3.5 <= p[0] <= -0.5]
+        lado_y = 1 if (pontos_transicao and (sum(p[1] for p in pontos_transicao) / len(pontos_transicao)) > 0) else -1
+
+        # C. Ponto de Recepção (Ápice do Passe)
+        if lado_y > 0:
+            idx_recepcao = max(range(idx_inicio_passe, len(bb.historico_bola)), key=lambda i: bb.historico_bola[i][1])
+        else:
+            idx_recepcao = min(range(idx_inicio_passe, len(bb.historico_bola)), key=lambda i: bb.historico_bola[i][1])
+
+        # D. Detecção do Ponto do Chute (Vértice do Drible por Distância Perpendicular)
+        idx_fim = len(bb.historico_bola) - 1
+        p_rec = bb.historico_bola[idx_recepcao]
+        p_gol = bb.historico_bola[idx_fim]
+
+        A = p_gol[1] - p_rec[1]
+        B = p_rec[0] - p_gol[0]
+        C = p_gol[0] * p_rec[1] - p_rec[0] * p_gol[1]
+        denom = math.hypot(A, B)
+
+        idx_chute = idx_recepcao
+        maior_dist = -1.0
+
+        for i in range(idx_recepcao, idx_fim):
+            p = bb.historico_bola[i]
+            if p[0] <= p_rec[0] - 0.3:
+                dist = abs(A * p[0] + B * p[1] + C) / denom if denom > 0 else 0
+                if dist > maior_dist:
+                    maior_dist = dist
+                    idx_chute = i
+
+        # --- PLOTAGEM DOS SEGMENTOS ---
+        # 1. Vetor de Passe (Sólido)
+        passe_bola = bb.historico_bola[idx_inicio_passe : idx_recepcao + 1]
+        if passe_bola:
+            px, py = [p[0] for p in passe_bola], [p[1] for p in passe_bola]
+            ax.plot(px, py, c='#981C3E', linewidth=3.0, label='1. Vetor de Passe (Assistência)', zorder=5)
+
+        # 2. Condução e Evasão com a Bola (Pontilhado fino)
+        drible_bola = bb.historico_bola[idx_recepcao : idx_chute + 1]
+        if drible_bola:
+            dx, dy = [p[0] for p in drible_bola], [p[1] for p in drible_bola]
+            ax.plot(dx, dy, c='#981C3E', linewidth=2.0, linestyle=':', label='Evasão Reativa com Bola', zorder=5)
+
+        # 3. Vetor de Finalização ao Gol (Sólido)
+        chute_bola = bb.historico_bola[idx_chute:]
+        if chute_bola:
+            cx, cy = [p[0] for p in chute_bola], [p[1] for p in chute_bola]
+            ax.plot(cx, cy, c='#981C3E', linewidth=3.0, label='2. Vetor de Finalização (Chute)', zorder=5)
+
+        # Pontos-Chave
+        p_passe = bb.historico_bola[idx_inicio_passe]
+        p_rec = bb.historico_bola[idx_recepcao]
+        p_chute = bb.historico_bola[idx_chute]
+
+        # Marcadores visuais destacados
+        ax.scatter(p_passe[0], p_passe[1], c='#CC9900', s=110, marker='o', edgecolors='black', zorder=6)
+        ax.scatter(p_rec[0], p_rec[1], c='#E67E22', s=120, marker='o', edgecolors='black', zorder=6) # Robô receptor
+        ax.scatter(p_chute[0], p_chute[1], c='#981C3E', s=160, marker='*', edgecolors='black', zorder=6) # Ponto do chute
+
+        # --- ANOTAÇÕES SEM SOBREPOSIÇÃO ---
+        # 1. Anotação do Passe (posicionada ligeiramente acima/ao lado da reta)
+        mid_pass_x = (p_passe[0] + p_rec[0]) / 2.0
+        mid_pass_y = (p_passe[1] + p_rec[1]) / 2.0
+        ax.annotate('1. Passe', xy=(mid_pass_x, mid_pass_y), 
+                    xytext=(mid_pass_x + 0.2, mid_pass_y + 0.4 * abs(lado_y)),
+                    arrowprops=dict(arrowstyle="->", color='#981C3E', lw=1.5),
+                    fontsize=9, fontweight='bold', color='#981C3E', ha='center',
+                    bbox=dict(boxstyle='round,pad=0.25', facecolor='white', edgecolor='#981C3E', alpha=0.95), zorder=7)
+
+        # 2. Anotação da Evasão e Chute (puxada para o espaço limpo interno em Y)
+        # Ao multiplicar por (-0.8 * lado_y), se lado_y=-1, a caixa sobe para Y=-0.8, saindo de cima do Ala!
+        ax.annotate('2. Evasão e Chute', xy=(p_chute[0], p_chute[1]), 
+                    xytext=(p_chute[0] - 0.2, p_chute[1] - 0.8 * lado_y),
+                    arrowprops=dict(arrowstyle="->", color='#981C3E', lw=1.5),
+                    fontsize=9, fontweight='bold', color='#981C3E', ha='center',
+                    bbox=dict(boxstyle='round,pad=0.25', facecolor='white', edgecolor='#981C3E', alpha=0.95), zorder=7)
+
+    ax.set_title("Estudo de Caso: Infiltração Tática, Assistência e Evasão Reativa", fontsize=11, pad=10, fontweight='bold')
+    ax.set_xlabel("Eixo Longitudinal X (m)", fontsize=9.5)
+    ax.set_ylabel("Eixo Transversal Y (m)", fontsize=9.5)
+    ax.legend(loc="lower left", framealpha=0.95, edgecolor='#CCCCCC', fontsize=8)
+    ax.grid(True, color='#E0E0E0', linestyle='-', linewidth=0.7)
+    
+    ax.set_xlim(-6.2, 5.0)
+    ax.set_ylim(-4.0, 4.0)
+    
+    plt.tight_layout()
+    plt.savefig("anexo_1_trajetorias_formal.png", dpi=300)
+    print("✅ Gráfico acadêmico salvo com sucesso sem sobreposições como 'anexo_1_trajetorias_formal.png'!")
 # ==========================================
 # LOOP PRINCIPAL (Integração)
 # ==========================================
@@ -719,7 +857,7 @@ def main():
     arvore_mestra = build_master_tree()
     export_tree_to_xml(arvore_mestra, "diagramas/arvore_mestra.xml")
 
-    setup_cenario_a()
+    setup_cenario_coordenacao()
     
     while True:
         start_time = time.time()
@@ -846,63 +984,47 @@ def main():
                     arvore_mestra.tick(bb)
                         
             # ==========================================
-            # COLETOR DE DADOS INTELIGENTE (Cenário A)
+            # COLETOR DE DADOS & GERADOR DE GRÁFICO (INDENTADO CORRETAMENTE)
             # ==========================================
             if not getattr(bb, 'teste_concluido', False):
-                # 1. Condição de Início (Juiz apitou o início da jogada)
+                # 1. Start do Teste
                 if not getattr(bb, 'teste_rodando', False) and bb.referee_command in ["NORMAL_START", "FORCE_START"]:
-                    print("\n▶️ TESTE INICIADO! Gravando dados da jogada...")
+                    print("\n▶️ TESTE INICIADO! Gravando posições...")
                     bb.teste_rodando = True
                     bb.tempo_inicio_teste = time.time()
-                    bb.teste_trocas = 0
-                    bb.teste_distancia = 0.0
-                    bb.pos_anteriores_alas = {}
-                
-                # 2. Coleta de Dados (Só executa se o cronômetro estiver rodando)
-                if getattr(bb, 'teste_rodando', False):
-                    for robo in team_robots:
-                        r_id = getattr(robo, 'id', -1)
-                        papel_atual = bb.papeis.get(r_id, "")
-                        papel_antigo = papeis_anteriores.get(r_id, "")
-                        
-                        # Conta as trocas
-                        if papel_antigo == "ATACANTE_APOIO_ESQ" and papel_atual == "ATACANTE_APOIO_DIR":
-                            bb.teste_trocas += 1
-                        elif papel_antigo == "ATACANTE_APOIO_DIR" and papel_atual == "ATACANTE_APOIO_ESQ":
-                            bb.teste_trocas += 1
-                            
-                        # Soma a distância ociosa
-                        if papel_atual in ["ATACANTE_APOIO_ESQ", "ATACANTE_APOIO_DIR"]:
-                            pos_antiga = bb.pos_anteriores_alas.get(r_id)
-                            if pos_antiga is not None:
-                                dist = math.hypot(robo.pos.x - pos_antiga[0], robo.pos.y - pos_antiga[1])
-                                bb.teste_distancia += dist
-                            bb.pos_anteriores_alas[r_id] = (robo.pos.x, robo.pos.y)
                     
-                    # 3. Condição de Parada (Gol ou Tempo Esgotado)
+                    # Salva a posição dos inimigos apenas uma vez para o gráfico
+                    bb.posicao_inimigos_fixos = [(r.pos.x, r.pos.y) for r in world.blue if abs(r.pos.x) > 0.001]
+                    
+                # 2. Gravando os rastros durante o jogo
+                if getattr(bb, 'teste_rodando', False):
+                    # Rastreia o atacante
+                    atacante = next((r for r in world.yellow if getattr(r, 'id', -1) == 1), None)
+                    if atacante and abs(atacante.pos.x) > 0.001:
+                        bb.historico_atacante.append((atacante.pos.x, atacante.pos.y))
+                    
+                    # Rastreia os alas de apoio (IDs 2 e 3)
+                    for ala_id in [2, 3]:
+                        ala = next((r for r in world.yellow if getattr(r, 'id', -1) == ala_id), None)
+                        if ala and abs(ala.pos.x) > 0.001:
+                            bb.historico_alas[ala_id].append((ala.pos.x, ala.pos.y))
+                    
+                    if bb.ball_pos:
+                        bb.historico_bola.append((bb.ball_pos.x, bb.ball_pos.y))
+                    
+                    # 3. Condição de Parada
                     tempo_decorrido = time.time() - bb.tempo_inicio_teste
-                    # Consideramos gol se a bola passar da linha X do gol inimigo (-5.9 ou 5.9)
                     fez_gol = bb.ball_pos.x < -5.9 if bb.is_yellow else bb.ball_pos.x > 5.9
                     
-                    if tempo_decorrido > 10.0 or fez_gol:
+                    if tempo_decorrido > 12.0 or fez_gol:
                         bb.teste_rodando = False
-                        bb.teste_concluido = True # Trava para não rodar de novo acidentalmente
-                        motivo = "GOL!" if fez_gol else "TEMPO ESGOTADO (10s)"
-                        print(f"\n⏹️ TESTE CONCLUÍDO ({motivo})")
-                        print(f"🏆 RESULTADO FINAL -> Trocas: {bb.teste_trocas} | Distância Ociosa: {bb.teste_distancia:.2f}m | Tempo de ataque: {tempo_decorrido:.2f}s\n")
-
-        # ==========================================
-        # PAINEL DE DEBUG E COLETA UNIFICADO (1 Hz)
-        # ==========================================
-        if time.time() - last_debug_time > 1.0:
-            time_nome = "AMARELO" if bb.is_yellow else "AZUL"
-            # print(f"[{time_nome}] Estado do Juiz: {bb.referee_command}")
-            # for r_id, papel in bb.papeis.items():
-                # print(f"  ID {r_id}: {papel}")
-            print(f"📊 [DADOS CENÁRIO A] Trocas: {bb.teste_trocas} | Dist. Ociosa: {bb.teste_distancia:.2f}m")
-            print("-" * 30)
-            last_debug_time = time.time()  
-
+                        bb.teste_concluido = True 
+                        print(f"\n⏹️ JOGADA CONCLUÍDA! (Motivo: {'GOL' if fez_gol else 'TEMPO 12s'})")
+                        
+                        # CHAMA A FUNÇÃO QUE GERA A IMAGEM
+                        gerar_grafico_colaboracao(bb)
+                        sys.exit(0) # Encerra o script para segurar o gráfico
+            
         # ==========================================
         # CONTROLE DE FPS (60Hz)
         # ==========================================
