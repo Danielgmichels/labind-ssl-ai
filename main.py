@@ -8,6 +8,7 @@ import struct
 import argparse
 from behavior_tree import *
 import matplotlib.pyplot as plt
+import random
 
 # Descobre onde o main.py está e aponta para a pasta proto_msg interna
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -293,6 +294,18 @@ class Blackboard:
         self.historico_alas = {2: [], 3: []} # Rastreador dos robôs 2 e 3
         self.historico_bola = []
         self.posicao_inimigos_fixos = []
+
+        # --- GERENCIADOR DE BATERIA AUTOMATIZADA (20 RODADAS) ---
+        self.max_rodadas = 20
+        self.rodada_atual = 1
+        self.resultados_bateria = []
+        self.em_cooldown = True
+        self.tempo_cooldown_inicio = time.time()
+        self.tempo_inicio_rodada = 0.0
+        
+        # Flags da jogada atual
+        self.flag_passe_realizado = False
+        self.flag_dominio_realizado = False
         
         # O Muro Físico das áreas gerado apenas uma vez
         self.defense_walls = create_solid_defense_walls() 
@@ -647,32 +660,53 @@ def teleporta_robo_simulador(id_robo, is_yellow, x, y, yaw, ip="127.0.0.1", port
     sock.sendto(packet.SerializeToString(), (ip, port))
 
 def setup_cenario_coordenacao():
-    print("--- MONTANDO CENÁRIO COORDENAÇÃO ---")
+    """
+    Monta o cenário ofensivo com perturbação estocástica controlada
+    na defesa adversária a cada rodada.
+    """
+    print("--- MONTANDO CENÁRIO COM DEFESA ESTOCÁSTICA ---")
     
-    # 1. Teleporta a bola pra nossa defesa
+    # 1. Teleporta a bola para a nossa intermediária ofensiva
     teleporta_bola_simulador(2.0, 0.0) 
     
-    # 2. Teleporta os Atores Principais (Amarelos)
-    teleporta_robo_simulador(1, True, 4.2, 0.0, 0.0)  # Atacante (atrás da bola)
-    teleporta_robo_simulador(2, True, 4.2, 1.5, 0.0)  # Ala Esquerda (Y positivo)
-    teleporta_robo_simulador(3, True, 4.2, -1.5, 0.0) # Ala Direita (Y negativo)
+    # 2. Teleporta o nosso trio de ataque (Amarelos - Posições de saída)
+    teleporta_robo_simulador(1, True, 4.2, 0.0, 0.0)   # Atacante
+    teleporta_robo_simulador(2, True, 4.2, 1.5, 0.0)   # Ala Esquerda (Cima)
+    teleporta_robo_simulador(3, True, 4.2, -1.5, 0.0)  # Ala Direita (Baixo)
     
-    # 3. Prende o resto do time na nossa área pra não sujarem o teste
+    # 3. Mantém os robôs inativos longe da jogada
     for i in range(4, 12):
-        teleporta_robo_simulador(i, True, 8, 0.0, 0.0) 
+        teleporta_robo_simulador(i, True, 8.0, 0.0, 0.0) 
         
-    # 4. Coloca 3 cones de treino (Inimigos parados) no meio do caminho
-    teleporta_robo_simulador(0, False, -5.7, 0.0, 0.0)
-    teleporta_robo_simulador(1, False, -1.0, 0.2, 0.0)
-    teleporta_robo_simulador(2, False, -1.5, -0.5, 0.0)
-    teleporta_robo_simulador(3, False, -3.5, 0.5, 0.0)
-    teleporta_robo_simulador(4, False, -2.0, -3.0, 0.0)
-    teleporta_robo_simulador(5, False, -2.5, 2.0, 0.0)
-    teleporta_robo_simulador(6, False, -0.7, -2.0, 0.0)
-    teleporta_robo_simulador(7, False, -0.7, 2.0, 0.0)
-    teleporta_robo_simulador(8, False, -4.0, -1.5, 0.0)
-    teleporta_robo_simulador(9, False, -3.0, -0.7, 0.0)
-    teleporta_robo_simulador(10, False, -1.0, 3.3, 0.0)
+    # 4. Goleiro adversário (pequena variação na linha do gol)
+    goleiro_y = random.uniform(-0.4, 0.4)
+    teleporta_robo_simulador(0, False, -5.7, goleiro_y, 0.0)
+
+    # 5. Defensores Adversários com ruído espacial delimitado
+    # Posições base da defesa
+    posicoes_base_inimigos = [
+        (-1.0, 0.2),   # ID 1
+        (-1.5, -0.5),  # ID 2
+        (-3.5, 0.5),   # ID 3
+        (-2.0, -3.0),  # ID 4
+        (-2.5, 2.0),   # ID 5
+        (-0.7, -2.0),  # ID 6
+        (-0.7, 2.0),   # ID 7
+        (-4.0, -1.5),  # ID 8
+        (-3.0, -0.7),  # ID 9
+        (-1.0, 3.3)    # ID 10
+    ]
+
+    for idx, (bx, by) in enumerate(posicoes_base_inimigos, start=1):
+        # Aplica variação de até +-20cm em X e +-30cm em Y
+        dx = random.uniform(-0.20, 0.20)
+        dy = random.uniform(-0.30, 0.30)
+        
+        rx = bx + dx
+        ry = by + dy
+        
+        teleporta_robo_simulador(idx, False, rx, ry, 0.0)
+
 
 def gerar_grafico_colaboracao(bb):
     print("\n📊 Gerando gráfico com anotações reposicionadas e sem sobreposição...")
@@ -811,6 +845,35 @@ def gerar_grafico_colaboracao(bb):
     plt.tight_layout()
     plt.savefig("anexo_1_trajetorias_formal.png", dpi=300)
     print("✅ Gráfico acadêmico salvo com sucesso sem sobreposições como 'anexo_1_trajetorias_formal.png'!")
+
+def imprimir_relatorio_final(resultados):
+    total = len(resultados)
+    if total == 0:
+        return
+        
+    passes_certos = sum(1 for r in resultados if r['passe'])
+    dominios_certos = sum(1 for r in resultados if r['dominio'])
+    gols = sum(1 for r in resultados if r['gol'])
+    tempos = [r['tempo'] for r in resultados if r['tempo'] > 0]
+    tempo_medio = sum(tempos) / len(tempos) if tempos else 0.0
+
+    print("\n" + "="*65)
+    print(f"📊 RELATÓRIO ESTATÍSTICO CONSOLIDADO ({total} RODADAS)")
+    print("="*65)
+    print(f"• Taxa de Decisão de Passe Correto : {passes_certos}/{total} ({(passes_certos/total)*100:.1f}%)")
+    print(f"• Taxa de Interceptação / Domínio  : {dominios_certos}/{total} ({(dominios_certos/total)*100:.1f}%)")
+    print(f"• Taxa de Conversão em Gols        : {gols}/{total} ({(gols/total)*100:.1f}%)")
+    print(f"• Tempo Médio por Jogada Ofensiva  : {tempo_medio:.2f} s")
+    print("="*65)
+    print("\n📋 TABELA PARA O RESUMO EXPANDIDO (ODT):")
+    print("| Métrica Avaliada | Eficácia Obtida |")
+    print("| :--- | :--- |")
+    print(f"| Decisão de Passe Autônomo | {(passes_certos/total)*100:.1f}% |")
+    print(f"| Recepção / Domínio dos Alas | {(dominios_certos/total)*100:.1f}% |")
+    print(f"| Eficiência de Conversão (Gols) | {(gols/total)*100:.1f}% |")
+    print(f"| Tempo Médio de Construção | {tempo_medio:.2f}s |")
+    print("="*65 + "\n")
+
 # ==========================================
 # LOOP PRINCIPAL (Integração)
 # ==========================================
@@ -984,46 +1047,68 @@ def main():
                     arvore_mestra.tick(bb)
                         
             # ==========================================
-            # COLETOR DE DADOS & GERADOR DE GRÁFICO (INDENTADO CORRETAMENTE)
+            # COLETOR AUTOMATIZADO DE 20 RODADAS
             # ==========================================
-            if not getattr(bb, 'teste_concluido', False):
-                # 1. Start do Teste
-                if not getattr(bb, 'teste_rodando', False) and bb.referee_command in ["NORMAL_START", "FORCE_START"]:
-                    print("\n▶️ TESTE INICIADO! Gravando posições...")
+            current_time_loop = time.time()
+
+            # FASE A: Cooldown / Estabilização física antes do início
+            if getattr(bb, 'em_cooldown', True):
+                if current_time_loop - bb.tempo_cooldown_inicio > 1.2:
+                    bb.em_cooldown = False
                     bb.teste_rodando = True
-                    bb.tempo_inicio_teste = time.time()
-                    
-                    # Salva a posição dos inimigos apenas uma vez para o gráfico
-                    bb.posicao_inimigos_fixos = [(r.pos.x, r.pos.y) for r in world.blue if abs(r.pos.x) > 0.001]
-                    
-                # 2. Gravando os rastros durante o jogo
-                if getattr(bb, 'teste_rodando', False):
-                    # Rastreia o atacante
-                    atacante = next((r for r in world.yellow if getattr(r, 'id', -1) == 1), None)
-                    if atacante and abs(atacante.pos.x) > 0.001:
-                        bb.historico_atacante.append((atacante.pos.x, atacante.pos.y))
-                    
-                    # Rastreia os alas de apoio (IDs 2 e 3)
+                    bb.tempo_inicio_rodada = current_time_loop
+                    bb.flag_passe_realizado = False
+                    bb.flag_dominio_realizado = False
+                    print(f"\n▶️ [RODADA {bb.rodada_atual}/{bb.max_rodadas}] Valendo! Monitorando jogada...")
+
+            # FASE B: Monitoramento da Jogada Ativa
+            elif getattr(bb, 'teste_rodando', False):
+                tempo_decorrido = current_time_loop - bb.tempo_inicio_rodada
+
+                # 1. Detecta o Passe do Atacante (Bola ganha velocidade diagonal para as pontas)
+                if not bb.flag_passe_realizado and bb.ball_pos:
+                    if bb.ball_pos.x < 1.0 and abs(bb.ball_pos.y) > 0.6:
+                        bb.flag_passe_realizado = True
+                        print(f"   ↳ [Passe]: Atacante identificou bloqueio e efetuou a assistência.")
+
+                # 2. Detecta Recepção / Domínio pelos Alas (ID 2 ou 3 próximo à bola)
+                if bb.flag_passe_realizado and not bb.flag_dominio_realizado and bb.ball_pos:
                     for ala_id in [2, 3]:
                         ala = next((r for r in world.yellow if getattr(r, 'id', -1) == ala_id), None)
                         if ala and abs(ala.pos.x) > 0.001:
-                            bb.historico_alas[ala_id].append((ala.pos.x, ala.pos.y))
-                    
-                    if bb.ball_pos:
-                        bb.historico_bola.append((bb.ball_pos.x, bb.ball_pos.y))
-                    
-                    # 3. Condição de Parada
-                    tempo_decorrido = time.time() - bb.tempo_inicio_teste
-                    fez_gol = bb.ball_pos.x < -5.9 if bb.is_yellow else bb.ball_pos.x > 5.9
-                    
-                    if tempo_decorrido > 12.0 or fez_gol:
-                        bb.teste_rodando = False
-                        bb.teste_concluido = True 
-                        print(f"\n⏹️ JOGADA CONCLUÍDA! (Motivo: {'GOL' if fez_gol else 'TEMPO 12s'})")
-                        
-                        # CHAMA A FUNÇÃO QUE GERA A IMAGEM
-                        gerar_grafico_colaboracao(bb)
-                        sys.exit(0) # Encerra o script para segurar o gráfico
+                            dist_ala_bola = math.hypot(ala.pos.x - bb.ball_pos.x, ala.pos.y - bb.ball_pos.y)
+                            if dist_ala_bola < 0.35 and bb.ball_pos.x < -2.0:
+                                bb.flag_dominio_realizado = True
+                                print(f"   ↳ [Recepção]: Ala ID {ala_id} interceptou e dominou o passe.")
+                                break
+
+                # 3. Condições de Encerramento da Rodada (Gol ou Timeout de 10s)
+                fez_gol = bb.ball_pos.x < -5.9 if (bb.ball_pos is not None) else False
+                estourou_tempo = tempo_decorrido > 20.0
+
+                if fez_gol or estourou_tempo:
+                    bb.teste_rodando = False
+                    resultado_rodada = {
+                        'rodada': bb.rodada_atual,
+                        'passe': bb.flag_passe_realizado,
+                        'dominio': bb.flag_dominio_realizado,
+                        'gol': fez_gol,
+                        'tempo': tempo_decorrido
+                    }
+                    bb.resultados_bateria.append(resultado_rodada)
+
+                    status = "⚽ GOL!" if fez_gol else "⏱️ TEMPO ESGOTADO"
+                    print(f"⏹️ [FIM DA RODADA {bb.rodada_atual}]: {status} ({tempo_decorrido:.2f}s)")
+
+                    # Avança para a próxima rodada ou encerra a bateria
+                    if bb.rodada_atual < bb.max_rodadas:
+                        bb.rodada_atual += 1
+                        bb.em_cooldown = True
+                        bb.tempo_cooldown_inicio = time.time()
+                        setup_cenario_coordenacao() # Reposiciona o campo automaticamente
+                    else:
+                        imprimir_relatorio_final(bb.resultados_bateria)
+                        sys.exit(0) # Encerra o script com o relatório gerado
             
         # ==========================================
         # CONTROLE DE FPS (60Hz)
