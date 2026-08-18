@@ -88,4 +88,4 @@ estrategia_labind/
 ## Arquitetura Tática (Behavior Tree)
 A imagem abaixo mostra uma visualização estática da árvore de comportamento gerada a partir do código. Para uma visualização interativa, utilize o **Groot** conforme as instruções acima.
 
-!Visualização da Árvore de Comportamento
+![Visualização da Árvore de Comportamento](diagramas/mapa_arvore_mestra.png)
