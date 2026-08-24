@@ -15,13 +15,15 @@ sys.path.append(CURRENT_DIR)
 sys.path.append(PROTO_MSGS_DIR) # Agora o Python já sabe ler os protobufs!
 
 # 2. SEGUNDO: Fazemos os imports dos nossos módulos e protobufs
+from behavior_tree.core import export_tree_to_xml
+from behavior_tree.trees.master import build_master_tree
 from communication.VisionClient import VisionClient
-from communication.RefereeClient import RefereeClient
+from communication.RefereeClient import RefereeClient 
 from communication.ActionClient import ActionClient
 from navigation.APF import ProportionalController
 from world.Blackboard import Blackboard
 from strategy.Maestro import maestro_distribui_papeis
-from behavior_tree.trees import *
+
 try:
     import State_pb2
     import ssl_simulation_robot_control_pb2 
