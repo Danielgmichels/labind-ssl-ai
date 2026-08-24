@@ -1,3 +1,4 @@
+import math
 def maestro_distribui_papeis(team_robots, ball_pos, enemy_goal_x, last_roles=None, id_goleiro=0):
     if last_roles is None: last_roles = {}
     papeis = {}
