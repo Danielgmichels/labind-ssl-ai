@@ -19,7 +19,7 @@ from behavior_tree import *
 from communication.VisionClient import VisionClient
 from communication.RefereeClient import RefereeClient
 from communication.ActionClient import ActionClient
-from navigation.ProportionalController import ProportionalController
+from navigation.APF import ProportionalController
 from navigation.Obstacles import VirtualObstacle, create_solid_defense_walls
 try:
     import State_pb2
