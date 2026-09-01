@@ -63,7 +63,7 @@
               <Sequence>
                 <Condition ID="ConditionIsNearBall"/>
                 <Condition ID="ConditionIsInShootingZone"/>
-                <Condition ID="ConditionIsPathClear"/>
+                <Condition ID="ConditionEvaluateShot"/>
                 <Action ID="ActionAimAndShoot"/>
               </Sequence>
               <Sequence>

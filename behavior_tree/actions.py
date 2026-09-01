@@ -199,7 +199,7 @@ class ActionAimAndShoot(Node):
         
         raio_do_robo = 0.09 
         vl = vw * raio_do_robo 
-        vf = 0.5 
+        vf = 0.1
         velocidade_chute = 0.0
         
         if abs(erro_angular) < 0.1:

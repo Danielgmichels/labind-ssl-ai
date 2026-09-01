@@ -1,6 +1,7 @@
 import math
 import time
 from .core import Node, NodeState
+from strategy.shot_scoring import get_best_shot_decision
 
 # ==========================================
 # NÓS DE CONDIÇÃO (O Juiz)
@@ -260,7 +261,7 @@ class ConditionIsPassClear(Node):
             if papel in papeis_alvo:
                 # Localiza as coordenadas reais desse companheiro
                 for r in blackboard.team:
-                    if getattr(r, 'id', -1) == r_id:
+                    if getattr(r, 'id', -1) == r_id and getattr(r, 'id', -1) != blackboard.my_id and getattr(r, 'visible', False):
                         alvos_potenciais.append((papel, r))
                         break
                         
@@ -331,4 +332,34 @@ class ConditionCheckRole(Node):
     def tick(self, blackboard):
         if blackboard.my_role == self.role_name:
             return NodeState.SUCCESS
+        return NodeState.FAILURE
+
+class ConditionEvaluateShot(Node):
+    """
+    Avalia múltiplos alvos de chute usando o Shot Scoring (Fase 1).
+    Retorna SUCCESS se encontrar um alvo que atinja o score mínimo,
+    e salva best_shot_y no Blackboard para a ActionAimAndShoot.
+    """
+    def tick(self, blackboard):
+        # Precisamos da referência do world_model e do ID do robô.
+        # Estamos assumindo que o seu loop principal salva eles no blackboard.
+        world = getattr(blackboard, 'world_model', None)
+        robot_id = getattr(blackboard, 'my_id', None)
+        
+        if world is None or robot_id is None:
+            return NodeState.FAILURE
+
+        # 1. Aciona a estratégia para avaliar todos os alvos
+        shot_decision = get_best_shot_decision(world, robot_id)
+
+        # 2. Salva a decisão completa no blackboard (útil para logs/debug depois)
+        blackboard.shot_decision = shot_decision
+
+        # 3. Transmite o alvo escolhido para a Action que vai executar o chute
+        if shot_decision.best_target_y is not None:
+            blackboard.best_shot_y = shot_decision.best_target_y
+            return NodeState.SUCCESS
+            
+        # Se nenhum alvo for bom o suficiente, falha a condição
+        blackboard.best_shot_y = None
         return NodeState.FAILURE

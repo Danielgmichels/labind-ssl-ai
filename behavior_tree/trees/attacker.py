@@ -21,7 +21,7 @@ def build_attacker_tree():
     ])
     
     receber_passe = Sequence([ConditionIsPassArriving(), ActionInterceptPass()])
-    tentar_finalizar = Sequence([ConditionIsNearBall(), ConditionIsInShootingZone(), ConditionIsPathClear(), ActionAimAndShoot()])
+    tentar_finalizar = Sequence([ConditionIsNearBall(), ConditionIsInShootingZone(), ConditionEvaluateShot(), ActionAimAndShoot()])
     tentar_passe = Sequence([ConditionIsNearBall(), ConditionIsPassClear(), ActionPassBall()])
     achar_angulo = Sequence([ConditionIsNearBall(), ConditionIsInShootingZone(), ActionFindShootingAngle()])
     tentar_conduzir = Sequence([ConditionIsNearBall(), ActionSmartDribble()])

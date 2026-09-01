@@ -130,6 +130,7 @@ def main():
         # ==========================================
         # Alimentamos o Blackboard para não quebrar a Behavior Tree e Actions atuais
         
+        bb.world_model = world
         bb.is_yellow = world.is_yellow
         bb.our_goal_x = world.field.our_goal_x
         bb.enemy_goal_x = world.field.enemy_goal_x
