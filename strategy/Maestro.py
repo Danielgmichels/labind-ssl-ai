@@ -1,5 +1,8 @@
 import math
-def maestro_distribui_papeis(team_robots, ball_pos, enemy_goal_x, last_roles=None, id_goleiro=0):
+import time
+
+def maestro_distribui_papeis(team_robots, ball_pos, enemy_goal_x, last_roles=None, id_goleiro=0,
+                             last_pass_time=0.0, pass_target_robot=None, last_passer_id=None):
     if last_roles is None: last_roles = {}
     papeis = {}
     if not team_robots: return papeis
@@ -13,6 +16,9 @@ def maestro_distribui_papeis(team_robots, ball_pos, enemy_goal_x, last_roles=Non
         return papeis
 
     # 1. Acha o Atacante (O robô mais perto da bola)
+    # Verifica se há um passe ativo em trânsito (< 1.2s após o disparo do chute)
+    pass_in_progress = (time.time() - last_pass_time < 1.2) and (pass_target_robot is not None)
+
     min_dist_bola = float('inf')
     id_atacante = None
     for r in team_robots:
@@ -21,9 +27,20 @@ def maestro_distribui_papeis(team_robots, ball_pos, enemy_goal_x, last_roles=Non
         
         dist_bola = math.hypot(r.pos.x - ball_pos.x, r.pos.y - ball_pos.y)
         
-        # CORREÇÃO 1: Histerese do Atacante (Evita que fiquem brigando pela bola)
-        if last_roles.get(r_id, "") == "ATACANTE":
-            dist_bola -= 0.5 # Bônus: Finge estar 50cm mais perto para segurar a vaga
+        # Se um passe estiver em trânsito:
+        if pass_in_progress:
+            if r_id == pass_target_robot:
+                # O receptor ganha super-prioridade para se tornar o ATACANTE imediatamente
+                dist_bola -= 2.0
+            elif r_id == last_passer_id:
+                # O passador não recebe bônus de atacante
+                pass
+            elif last_roles.get(r_id, "") == "ATACANTE":
+                dist_bola -= 0.5
+        else:
+            # Histerese normal do Atacante (Evita que fiquem brigando pela bola)
+            if last_roles.get(r_id, "") == "ATACANTE":
+                dist_bola -= 0.5 # Bônus: Finge estar 50cm mais perto para segurar a vaga
             
         if dist_bola < min_dist_bola:
             min_dist_bola = dist_bola

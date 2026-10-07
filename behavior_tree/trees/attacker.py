@@ -22,14 +22,18 @@ def build_attacker_tree():
     
     receber_passe = Sequence([ConditionIsPassArriving(), ActionInterceptPass()])
     tentar_finalizar = Sequence([ConditionIsNearBall(), ConditionIsInShootingZone(), ConditionEvaluateShot(), ActionAimAndShoot()])
-    tentar_passe = Sequence([ConditionIsNearBall(), ConditionIsPassClear(), ActionPassBall()])
+    # 1. Se houver passe ofensivo para frente, executa para acelerar o ataque
+    tentar_passe_avancado = Sequence([ConditionIsNearBall(), ConditionEvaluatePass(only_forward=True), ActionPassBall()])
+    # 2. Se não houver chute nem passe para frente, tenta achar ângulo lateralmente ou conduzir contra a barreira
     achar_angulo = Sequence([ConditionIsNearBall(), ConditionIsInShootingZone(), ActionFindShootingAngle()])
     tentar_conduzir = Sequence([ConditionIsNearBall(), ActionSmartDribble()])
+    # 3. Se a busca de ângulo/condução não abrir brecha, autoriza o passe para trás (recuo) para girar o jogo
+    tentar_passe_recuo = Sequence([ConditionIsNearBall(), ConditionEvaluatePass(only_forward=False), ActionPassBall()])
     buscar_bola = ActionGoToBall()
     
     ramo_ofensivo = Sequence([
         Selector([ConditionIsGameRunning(), ConditionIsOurFreeKick()]),
-        Selector([receber_passe, tentar_finalizar, tentar_passe, achar_angulo, tentar_conduzir, buscar_bola])
+        Selector([receber_passe, tentar_finalizar, tentar_passe_avancado, achar_angulo, tentar_conduzir, tentar_passe_recuo, buscar_bola])
     ])
 
     return Selector([ramo_emergencia, ramo_kickoff_nosso, ramo_kickoff_deles, Sequence([ConditionIsEnemyFreeKick(), ActionMarkEnemy(6)]), cobrar_falta, ramo_ofensivo])

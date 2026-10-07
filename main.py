@@ -186,8 +186,17 @@ def main():
         # ==========================================
         papeis_anteriores = getattr(bb, 'papeis', {})
         
-        # Maestro agora recebe listas limpas (sem fantasmas da visão)
-        papeis_do_time = maestro_distribui_papeis(team_robots, getattr(bb, 'ball_pos', None), bb.enemy_goal_x, papeis_anteriores, id_goleiro=0)
+        # Maestro agora recebe listas limpas e informações de passe em trânsito
+        papeis_do_time = maestro_distribui_papeis(
+            team_robots,
+            getattr(bb, 'ball_pos', None),
+            bb.enemy_goal_x,
+            papeis_anteriores,
+            id_goleiro=0,
+            last_pass_time=getattr(bb, 'last_pass_time', 0.0),
+            pass_target_robot=getattr(bb, 'pass_in_progress_target', getattr(bb, 'pass_target_robot', None)),
+            last_passer_id=getattr(bb, 'last_passer_id', None)
+        )
         
         bb.papeis = papeis_do_time
         bb.team = team_robots

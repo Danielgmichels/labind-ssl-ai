@@ -5,7 +5,9 @@
     <Action ID="ActionClearBall"/>
     <Action ID="ActionCrossToBox"/>
     <Action ID="ActionDefendGoal"/>
-    <Action ID="ActionFindShootingAngle"/>
+    <Action ID="ActionFindShootingAngle">
+      <input_port name="max_duration"/>
+    </Action>
     <Action ID="ActionFormDefensiveWall">
       <input_port name="offset_lateral"/>
     </Action>
@@ -42,6 +44,9 @@
     <Action ID="ActionZagueiroMarcacao"/>
     <Condition ID="ConditionCheckRole">
       <input_port name="role_name"/>
+    </Condition>
+    <Condition ID="ConditionEvaluatePass">
+      <input_port name="only_forward"/>
     </Condition>
     <Condition ID="ConditionEvaluateShot"/>
     <Condition ID="ConditionIsBallSafeToClear"/>
