@@ -27,11 +27,12 @@ def build_zaga_marcacao_tree():
 
 def build_volante_tree():
     valendo_ou_nossa_falta = Selector([ConditionIsGameRunning(), ConditionIsOurFreeKick()])
+    receber_passe = Sequence([ConditionIsPassArriving(), ActionInterceptPass()])
     return Selector([
         Sequence([ConditionIsHalted(), ActionStopMotors()]),
         # NOVO: Cão de guarda fica a 4.5 metros (quase na área)
         Sequence([qualquer_kickoff, ActionPositionForKickoff(4.5, 0.0)]),
         Sequence([ConditionIsEnemyFreeKick(), ActionFormDefensiveWall(offset_lateral=-0.18)]),
-        Sequence([valendo_ou_nossa_falta, ActionVolanteDefensivo()]),
+        Sequence([valendo_ou_nossa_falta, Selector([receber_passe, ActionVolanteDefensivo()])]),
         ActionStopMotors() 
     ])

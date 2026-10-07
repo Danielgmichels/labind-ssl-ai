@@ -68,17 +68,22 @@
               </Sequence>
               <Sequence>
                 <Condition ID="ConditionIsNearBall"/>
-                <Condition ID="ConditionIsPassClear"/>
+                <Condition ID="ConditionEvaluatePass" only_forward="True"/>
                 <Action ID="ActionPassBall"/>
               </Sequence>
               <Sequence>
                 <Condition ID="ConditionIsNearBall"/>
                 <Condition ID="ConditionIsInShootingZone"/>
-                <Action ID="ActionFindShootingAngle"/>
+                <Action ID="ActionFindShootingAngle" max_duration="1.5"/>
               </Sequence>
               <Sequence>
                 <Condition ID="ConditionIsNearBall"/>
                 <Action ID="ActionSmartDribble"/>
+              </Sequence>
+              <Sequence>
+                <Condition ID="ConditionIsNearBall"/>
+                <Condition ID="ConditionEvaluatePass" only_forward="False"/>
+                <Action ID="ActionPassBall"/>
               </Sequence>
               <Action ID="ActionGoToBall"/>
             </Selector>
@@ -179,7 +184,13 @@
           </Sequence>
           <Sequence>
             <Condition ID="ConditionIsGameRunning"/>
-            <Action ID="ActionMeiaArmador"/>
+            <Selector>
+              <Sequence>
+                <Condition ID="ConditionIsPassArriving"/>
+                <Action ID="ActionInterceptPass"/>
+              </Sequence>
+              <Action ID="ActionMeiaArmador"/>
+            </Selector>
           </Sequence>
           <Action ID="ActionStopMotors"/>
         </Selector>
@@ -207,7 +218,13 @@
               <Condition ID="ConditionIsGameRunning"/>
               <Condition ID="ConditionIsOurFreeKick"/>
             </Selector>
-            <Action ID="ActionMidfieldSupport"/>
+            <Selector>
+              <Sequence>
+                <Condition ID="ConditionIsPassArriving"/>
+                <Action ID="ActionInterceptPass"/>
+              </Sequence>
+              <Action ID="ActionMidfieldSupport"/>
+            </Selector>
           </Sequence>
           <Action ID="ActionStopMotors"/>
         </Selector>
@@ -235,7 +252,13 @@
               <Condition ID="ConditionIsGameRunning"/>
               <Condition ID="ConditionIsOurFreeKick"/>
             </Selector>
-            <Action ID="ActionVolanteDefensivo"/>
+            <Selector>
+              <Sequence>
+                <Condition ID="ConditionIsPassArriving"/>
+                <Action ID="ActionInterceptPass"/>
+              </Sequence>
+              <Action ID="ActionVolanteDefensivo"/>
+            </Selector>
           </Sequence>
           <Action ID="ActionStopMotors"/>
         </Selector>
@@ -264,7 +287,13 @@
           </Sequence>
           <Sequence>
             <Condition ID="ConditionIsGameRunning"/>
-            <Action ID="ActionLateral" lado_y="3.5"/>
+            <Selector>
+              <Sequence>
+                <Condition ID="ConditionIsPassArriving"/>
+                <Action ID="ActionInterceptPass"/>
+              </Sequence>
+              <Action ID="ActionLateral" lado_y="3.5"/>
+            </Selector>
           </Sequence>
           <Action ID="ActionStopMotors"/>
         </Selector>
@@ -293,7 +322,13 @@
           </Sequence>
           <Sequence>
             <Condition ID="ConditionIsGameRunning"/>
-            <Action ID="ActionLateral" lado_y="-3.5"/>
+            <Selector>
+              <Sequence>
+                <Condition ID="ConditionIsPassArriving"/>
+                <Action ID="ActionInterceptPass"/>
+              </Sequence>
+              <Action ID="ActionLateral" lado_y="-3.5"/>
+            </Selector>
           </Sequence>
           <Action ID="ActionStopMotors"/>
         </Selector>
