@@ -43,6 +43,7 @@
     <Condition ID="ConditionCheckRole">
       <input_port name="role_name"/>
     </Condition>
+    <Condition ID="ConditionEvaluateShot"/>
     <Condition ID="ConditionIsBallSafeToClear"/>
     <Condition ID="ConditionIsEnemyFreeKick"/>
     <Condition ID="ConditionIsEnemyPrepareKickoff"/>
