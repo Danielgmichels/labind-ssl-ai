@@ -40,7 +40,8 @@ def build_attacker_tree():
 
 def build_atacante_apoio_tree(lado_y, indice_marcacao, angulo_falta):
     receber_passe = Sequence([ConditionIsPassArriving(), ActionInterceptPass()])
-    ramo_ofensivo = Sequence([ConditionIsGameRunning(), Selector([receber_passe, ActionPositionForPass(lado_y)])])
+    posicionar_livre = Sequence([ConditionEvaluateFreeSpace(side_y=lado_y), ActionPositionForPass(lado_y)])
+    ramo_ofensivo = Sequence([ConditionIsGameRunning(), Selector([receber_passe, posicionar_livre, ActionPositionForPass(lado_y)])])
     
     return Selector([
         Sequence([ConditionIsHalted(), ActionStopMotors()]),

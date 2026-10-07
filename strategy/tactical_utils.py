@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import List, Optional
 from typing import List, Optional, Tuple
 
 # --- Configurações Centralizadas ---
@@ -47,6 +48,22 @@ TACTICAL_CONFIG = {
             "ESPERA": 0.00,
             "GOLEIRO": 0.00
         }
+    },
+    "FREE_SPACE": {
+        "grid_resolution": 0.50,   # Resolução da grade espacial (m)
+        "min_score": 0.35,         # Limiar mínimo para aprovação de ponto
+        "stability_bonus": 0.15,   # Bônus para o ponto atual (evita oscilações)
+        "switch_margin": 0.05,     # Margem necessária para trocar de ponto
+        "safe_margin": 0.35,       # Margem livre de adversários (m)
+        "collision_radius": 0.18,  # Raio de bloqueio físico na linha de passe (m)
+        "weights": {
+            "space": 0.25,
+            "pass_line": 0.25,
+            "support": 0.15,
+            "progression": 0.15,
+            "defensive_cover": 0.10,
+            "safety": 0.10
+        }
     }
 }
 
@@ -92,3 +109,23 @@ class PassDecision:
     best_target_point: Optional[Tuple[float, float]] = None
     best_candidate: Optional[PassCandidate] = None
     all_candidates: List[PassCandidate] = field(default_factory=list)
+
+
+# --- Estruturas de Dados (Fase 3: Free-Space Positioning) ---
+@dataclass
+class PositionCandidate:
+    target_point: Tuple[float, float]
+    score: float = 0.0
+    space_score: float = 0.0
+    pass_line_score: float = 0.0
+    support_score: float = 0.0
+    progression_score: float = 0.0
+    defensive_cover_score: float = 0.0
+    safety_score: float = 0.0
+    reason: str = ""
+
+@dataclass
+class PositionDecision:
+    best_target_point: Optional[Tuple[float, float]] = None
+    best_candidate: Optional[PositionCandidate] = None
+    all_candidates: List[PositionCandidate] = field(default_factory=list)

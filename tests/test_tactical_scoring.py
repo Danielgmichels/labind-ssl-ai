@@ -1,7 +1,6 @@
 import os
 import sys
 import unittest
-import time
 
 # Garante inclusão do diretório raiz e de proto_msg no path de importação
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -16,10 +15,12 @@ from communication.ActionClient import ActionClient
 
 from strategy.shot_scoring import get_best_shot_decision, _calc_progression as calc_shot_progression
 from strategy.pass_scoring import get_best_pass_decision, _calc_progression as calc_pass_progression
+from strategy.space_scoring import get_best_free_space_decision
 from strategy.Maestro import maestro_distribui_papeis
-from behavior_tree.conditions import ConditionEvaluateShot, ConditionEvaluatePass
-from behavior_tree.actions import ActionGoToBall, ActionPassBall
+from behavior_tree.conditions import ConditionEvaluateShot, ConditionEvaluatePass, ConditionEvaluateFreeSpace
+from behavior_tree.actions import ActionGoToBall, ActionPassBall, ActionPositionForPass
 from behavior_tree.core import NodeState
+import time
 
 
 class TestShotScoring(unittest.TestCase):
@@ -177,7 +178,6 @@ class TestPassScoring(unittest.TestCase):
         status = cond.tick(self.bb)
         self.assertEqual(status, NodeState.SUCCESS)
         self.assertIsNotNone(self.bb.pass_target_point)
-
     def test_forward_pass_preferred_over_backward_pass(self):
         # Receptor 2 à frente (-3.5), Receptor 3 atrás (-1.0)
         self.r1.x = -3.5 # à frente (gol inimigo é em -6.0)
@@ -253,6 +253,81 @@ class TestPassScoring(unittest.TestCase):
             last_pass_time=time.time(), pass_target_robot=2, last_passer_id=1
         )
         self.assertEqual(papeis_com_passe[2], "ATACANTE")
+
+
+class TestFreeSpacePositioning(unittest.TestCase):
+    def setUp(self):
+        self.controller = ProportionalController(2.0, 2.0, 2.5, 5.0)
+        self.action = ActionClient(port=10397)
+        self.bb = Blackboard(self.controller, self.action)
+
+        self.world = WorldModel(is_yellow=True) # enemy_goal_x = -6.0
+        self.bb.world_model = self.world
+
+        # Bola na zona intermediária
+        self.world.ball.x = -2.0
+        self.world.ball.y = 0.0
+        self.world.ball.visible = True
+        self.bb.ball_pos = self.world.ball
+
+        # Atacante de apoio ID 2
+        self.robot = self.world.get_robot(2)
+        self.robot.x = -3.0
+        self.robot.y = 1.5
+        self.robot.yaw = 0.0
+        self.robot.visible = True
+        self.bb.my_id = 2
+        self.bb.my_pos = type('RoboMock', (), {
+            'pos': type('Pos', (), {'x': -3.0, 'y': 1.5})(),
+            'yaw': 0.0
+        })()
+
+    def tearDown(self):
+        if hasattr(self.action, 'sock') and self.action.sock:
+            self.action.sock.close()
+
+    def test_free_space_identifies_open_position(self):
+        decision = get_best_free_space_decision(self.world, self.bb, 2, side_y=1.5)
+        self.assertIsNotNone(decision.best_candidate)
+        self.assertIsNotNone(decision.best_target_point)
+        # Deve estar na ala esquerda (y > 0)
+        self.assertGreater(decision.best_target_point[1], 0.0)
+        self.assertGreaterEqual(decision.best_candidate.score, 0.35)
+
+    def test_free_space_avoids_blocked_lane(self):
+        # Bloqueia a linha da bola (-2.0, 0.0) para a região (-3.5, 1.5)
+        opp = self.world.get_robot(0, is_opponent=True)
+        opp.x = -2.75
+        opp.y = 0.75
+        opp.visible = True
+
+        decision = get_best_free_space_decision(self.world, self.bb, 2, side_y=1.5)
+        self.assertIsNotNone(decision.best_candidate)
+        # A posição escolhida deve contornar o bloqueio e manter pass_line_score > 0
+        self.assertGreater(decision.best_candidate.pass_line_score, 0.0)
+
+    def test_free_space_hysteresis_prevents_unnecessary_switch(self):
+        # Primeira decisão
+        dec1 = get_best_free_space_decision(self.world, self.bb, 2, side_y=1.5)
+        target1 = dec1.best_target_point
+
+        # Nova decisão fornecendo target1 como posição atual (ganha stability_bonus de 0.15)
+        dec2 = get_best_free_space_decision(self.world, self.bb, 2, current_target=target1, side_y=1.5)
+        self.assertEqual(dec2.best_target_point, target1)
+
+    def test_condition_evaluate_free_space_integration(self):
+        cond = ConditionEvaluateFreeSpace(side_y=1.5)
+        status = cond.tick(self.bb)
+        self.assertEqual(status, NodeState.SUCCESS)
+        self.assertIsNotNone(self.bb.free_space_target)
+        self.assertIsNotNone(self.bb.free_space_decision)
+
+    def test_action_position_for_pass_consumes_free_space_target(self):
+        # Configura um alvo explícito vindo do scoring
+        self.bb.free_space_target = (-4.0, 2.0)
+        action = ActionPositionForPass(lado_y=1.5)
+        status = action.tick(self.bb)
+        self.assertEqual(status, NodeState.RUNNING)
 
 
 if __name__ == "__main__":

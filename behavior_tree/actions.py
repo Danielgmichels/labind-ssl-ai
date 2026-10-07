@@ -292,12 +292,14 @@ class ActionPositionForPass(Node):
         if blackboard.my_pos is None or blackboard.ball_pos is None:
             return NodeState.FAILURE
 
-        # 1. O Alvo
-        direcao = 1 if blackboard.enemy_goal_x > 0 else -1
-        alvo_x = blackboard.enemy_goal_x - (direcao * 2.5) 
-        
-        # AQUI ESTÁ A CURA DO CAOS: O Y agora é travado no lado do robô!
-        alvo_y = self.lado_y
+        # 1. O Alvo Dinâmico (Free Space Positioning) ou Fallback Estático
+        free_space_target = getattr(blackboard, 'free_space_target', None)
+        if free_space_target is not None:
+            alvo_x, alvo_y = free_space_target
+        else:
+            direcao = 1 if blackboard.enemy_goal_x > 0 else -1
+            alvo_x = blackboard.enemy_goal_x - (direcao * 2.5) 
+            alvo_y = self.lado_y
         
         # 2. Navegação com APF
         vf, vl, vw = blackboard.controller.calculate_velocity(

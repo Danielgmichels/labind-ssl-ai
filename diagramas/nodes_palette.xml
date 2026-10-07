@@ -45,6 +45,9 @@
     <Condition ID="ConditionCheckRole">
       <input_port name="role_name"/>
     </Condition>
+    <Condition ID="ConditionEvaluateFreeSpace">
+      <input_port name="side_y"/>
+    </Condition>
     <Condition ID="ConditionEvaluatePass">
       <input_port name="only_forward"/>
     </Condition>
