@@ -1,4 +1,5 @@
 import math
+import time
 from .core import Node, NodeState
 
 # ==========================================
@@ -87,6 +88,17 @@ class ActionGoToBall(Node):
 
         alvo_x = blackboard.ball_pos.x
         alvo_y = blackboard.ball_pos.y
+
+        # PASS LOCKOUT: Se este robô acabou de chutar um passe, NÃO persegue a bola imediatamente!
+        # Isso dá tempo para a bola viajar livre até o companheiro sem auto-perseguição.
+        last_pass_time = getattr(blackboard, 'last_pass_time', 0.0)
+        last_passer_id = getattr(blackboard, 'last_passer_id', None)
+        if (time.time() - last_pass_time < 1.0) and (blackboard.my_id == last_passer_id):
+            blackboard.action.send_command(
+                robot_id=blackboard.my_id, v_forward=0.0, v_left=0.0, vw=0.0,
+                kick_speed=0.0, dribbler_speed=0.0
+            )
+            return NodeState.RUNNING
         
         # Proteção de Geofencing: Se a bola rolou pra dentro da área
         # (Lembrando que o campo longo vai até -6.0 e 6.0, com a área até -5.0 e 5.0)
@@ -199,7 +211,7 @@ class ActionAimAndShoot(Node):
         
         raio_do_robo = 0.09 
         vl = vw * raio_do_robo 
-        vf = 0.5 
+        vf = 0.1
         velocidade_chute = 0.0
         
         if abs(erro_angular) < 0.1:
@@ -217,8 +229,26 @@ class ActionAimAndShoot(Node):
 
 class ActionFindShootingAngle(Node):
     """Fica de frente para o gol rodando o driblador e anda de lado (Strafing) até abrir espaço."""
+    def __init__(self, max_duration=1.5):
+        super().__init__()
+        self.max_duration = max_duration
+        self.start_time = None
+        self.last_tick_time = 0.0
+
     def tick(self, blackboard):
         if blackboard.my_pos is None:
+            return NodeState.FAILURE
+
+        now = time.time()
+        # Se foi interrompido por mais de 0.3s, reinicia o cronômetro do strafe
+        if (now - self.last_tick_time) > 0.3 or self.start_time is None:
+            self.start_time = now
+        self.last_tick_time = now
+
+        # Se já tentou achar ângulo pelo tempo limite sem conseguir brecha de chute,
+        # ou se estiver muito próximo da lateral do campo, falha para permitir passe/recuo
+        if (now - self.start_time > self.max_duration) or abs(blackboard.my_pos.pos.y) > 2.8:
+            self.start_time = None
             return NodeState.FAILURE
 
         gol_inimigo_x = blackboard.enemy_goal_x
@@ -262,12 +292,14 @@ class ActionPositionForPass(Node):
         if blackboard.my_pos is None or blackboard.ball_pos is None:
             return NodeState.FAILURE
 
-        # 1. O Alvo
-        direcao = 1 if blackboard.enemy_goal_x > 0 else -1
-        alvo_x = blackboard.enemy_goal_x - (direcao * 2.5) 
-        
-        # AQUI ESTÁ A CURA DO CAOS: O Y agora é travado no lado do robô!
-        alvo_y = self.lado_y
+        # 1. O Alvo Dinâmico (Free Space Positioning) ou Fallback Estático
+        free_space_target = getattr(blackboard, 'free_space_target', None)
+        if free_space_target is not None:
+            alvo_x, alvo_y = free_space_target
+        else:
+            direcao = 1 if blackboard.enemy_goal_x > 0 else -1
+            alvo_x = blackboard.enemy_goal_x - (direcao * 2.5) 
+            alvo_y = self.lado_y
         
         # 2. Navegação com APF
         vf, vl, vw = blackboard.controller.calculate_velocity(
@@ -306,7 +338,7 @@ class ActionPassBall(Node):
     """
     def tick(self, blackboard):
         # Agora ele procura pelo ponto (x,y) salvo pela condição
-        if blackboard.my_pos is None or not hasattr(blackboard, 'pass_target_point'):
+        if blackboard.my_pos is None or not hasattr(blackboard, 'pass_target_point') or blackboard.pass_target_point is None:
             return NodeState.FAILURE
             
         # Lê o ponto de encontro do blackboard
@@ -324,23 +356,33 @@ class ActionPassBall(Node):
         vl = vw * raio_do_robo 
         vf = 0.1
         velocidade_chute = 0.0
+        dribbler = 1500.0
         
         # === A CORREÇÃO DO SNIPER VEM AQUI ===
-        # Exige alinhamento quase perfeito (0.03 radianos) antes de soltar a bomba
+        # Exige alinhamento quase perfeito (0.02 radianos) antes de soltar a bomba
         if abs(erro_angular) < 0.02:
             vw = 0.0
             vl = 0.0
             
             # Calcula a distância até o ponto de encontro para definir a força
             dist_passe = math.hypot(alvo_x - blackboard.my_pos.pos.x, alvo_y - blackboard.my_pos.pos.y)
-            velocidade_chute = min(dist_passe * 1.9, 6.0) 
+            # Garante força mínima de 2.5 m/s para não morrer no atrito do piso
+            velocidade_chute = max(2.5, min(dist_passe * 2.2, 6.0))
             
             # FREIA O ROBÔ: Garante que a bola bata limpa no chutador e não nas rodas
             vf = 0.0 
+            # DESLIGA O DRIBBLER NO DISPARO: Solta a bola limpa sem atrito do rolete
+            dribbler = 0.0
+
+            # REGISTRO DE EVENTO DE PASSE (Pass Lockout e transferência para o receptor)
+            blackboard.last_pass_time = time.time()
+            blackboard.last_passer_id = blackboard.my_id
+            if hasattr(blackboard, 'pass_target_robot'):
+                blackboard.pass_in_progress_target = blackboard.pass_target_robot
             
         blackboard.action.send_command(
             robot_id=blackboard.my_id, v_forward=vf, v_left=vl, vw=vw,
-            kick_speed=velocidade_chute, dribbler_speed=1500.0
+            kick_speed=velocidade_chute, dribbler_speed=dribbler
         )
         return NodeState.RUNNING
     

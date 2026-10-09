@@ -1,6 +1,9 @@
 import math
 import time
 from .core import Node, NodeState
+from strategy.shot_scoring import get_best_shot_decision
+from strategy.pass_scoring import get_best_pass_decision
+from strategy.space_scoring import get_best_free_space_decision
 
 # ==========================================
 # NÓS DE CONDIÇÃO (O Juiz)
@@ -260,7 +263,7 @@ class ConditionIsPassClear(Node):
             if papel in papeis_alvo:
                 # Localiza as coordenadas reais desse companheiro
                 for r in blackboard.team:
-                    if getattr(r, 'id', -1) == r_id:
+                    if getattr(r, 'id', -1) == r_id and getattr(r, 'id', -1) != blackboard.my_id and getattr(r, 'visible', False):
                         alvos_potenciais.append((papel, r))
                         break
                         
@@ -331,4 +334,101 @@ class ConditionCheckRole(Node):
     def tick(self, blackboard):
         if blackboard.my_role == self.role_name:
             return NodeState.SUCCESS
+        return NodeState.FAILURE
+
+class ConditionEvaluateShot(Node):
+    """
+    Avalia múltiplos alvos de chute usando o Shot Scoring (Fase 1).
+    Retorna SUCCESS se encontrar um alvo que atinja o score mínimo,
+    e salva best_shot_y no Blackboard para a ActionAimAndShoot.
+    """
+    def tick(self, blackboard):
+        # Precisamos da referência do world_model e do ID do robô.
+        # Estamos assumindo que o seu loop principal salva eles no blackboard.
+        world = getattr(blackboard, 'world_model', None)
+        robot_id = getattr(blackboard, 'my_id', None)
+        
+        if world is None or robot_id is None:
+            return NodeState.FAILURE
+
+        # 1. Aciona a estratégia para avaliar todos os alvos
+        shot_decision = get_best_shot_decision(world, robot_id)
+
+        # 2. Salva a decisão completa no blackboard (útil para logs/debug depois)
+        blackboard.shot_decision = shot_decision
+
+        # 3. Transmite o alvo escolhido para a Action que vai executar o chute
+        if shot_decision.best_target_y is not None:
+            blackboard.best_shot_y = shot_decision.best_target_y
+            return NodeState.SUCCESS
+            
+        # Se nenhum alvo for bom o suficiente, falha a condição
+        blackboard.best_shot_y = None
+        return NodeState.FAILURE
+
+
+class ConditionEvaluatePass(Node):
+    """
+    Avalia múltiplos receptores de passe usando o Pass Scoring (Fase 2).
+    Retorna SUCCESS se encontrar um passe viável acima do score mínimo,
+    e salva pass_decision, pass_target_point e pass_target_robot no Blackboard.
+    Se only_forward for True, considera apenas passes com progressão positiva (para frente).
+    """
+    def __init__(self, only_forward: bool = False):
+        super().__init__()
+        self.only_forward = only_forward
+
+    def tick(self, blackboard):
+        world = getattr(blackboard, 'world_model', None)
+        robot_id = getattr(blackboard, 'my_id', None)
+
+        if world is None or robot_id is None:
+            return NodeState.FAILURE
+
+        # 1. Aciona a estratégia para avaliar todos os companheiros elegíveis
+        pass_decision = get_best_pass_decision(world, blackboard, robot_id, only_forward=self.only_forward)
+
+        # 2. Salva a decisão completa no blackboard para depuração e rastreabilidade
+        blackboard.pass_decision = pass_decision
+
+        # 3. Transmite o alvo escolhido para a ActionPassBall
+        if pass_decision.best_candidate is not None and pass_decision.best_target_point is not None:
+            blackboard.pass_target_point = pass_decision.best_target_point
+            blackboard.pass_target_robot = pass_decision.best_target_robot
+            return NodeState.SUCCESS
+
+        blackboard.pass_target_point = None
+        blackboard.pass_target_robot = None
+        return NodeState.FAILURE
+
+
+class ConditionEvaluateFreeSpace(Node):
+    """
+    Avalia a grade espacial do campo usando o Free-Space Positioning (Fase 3).
+    Seleciona a coordenada ótima para se posicionar como linha de passe e apoio.
+    Salva free_space_decision e free_space_target no Blackboard.
+    """
+    def __init__(self, side_y=None):
+        super().__init__()
+        self.side_y = side_y
+
+    def tick(self, blackboard):
+        world = getattr(blackboard, 'world_model', None)
+        robot_id = getattr(blackboard, 'my_id', None)
+
+        if world is None or robot_id is None:
+            return NodeState.FAILURE
+
+        current_target = getattr(blackboard, 'free_space_target', None)
+        decision = get_best_free_space_decision(
+            world, blackboard, robot_id,
+            current_target=current_target,
+            side_y=self.side_y
+        )
+
+        blackboard.free_space_decision = decision
+        if decision.best_target_point is not None:
+            blackboard.free_space_target = decision.best_target_point
+            return NodeState.SUCCESS
+
         return NodeState.FAILURE
