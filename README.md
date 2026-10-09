@@ -98,10 +98,15 @@ A ideia central é separar responsabilidades:
 
 *   **🧠 Arquitetura com Behavior Tree:** Motor de decisão modular (`Selector`, `Sequence`, `Action`, `Condition`) construído do zero, permitindo a criação de táticas complexas de forma clara e expansível.
 *   **📡 Sistema Multi-Agente (O "Maestro"):** Algoritmo que distribui papéis dinamicamente (Atacante, Goleiro, Zagueiros, etc.) em tempo real, usando a posição da bola e lógica de histerese para garantir estabilidade tática.
+*   **🎯 Tactical Scoring Engine (Decisão Tática por Pontuação Multi-Critério):**
+    *   **Shot Scoring:** Avaliação geométrica contínua da meta inimiga, ponderando abertura das traves, alinhamento angular, avanço territorial e bloqueio físico por obstáculos/defensores.
+    *   **Pass Scoring & Sincronia Coletiva:** Seleção ótima de companheiros livres para passe, avaliando progressão ofensiva, ângulo de recepção, risco de interceptação e densidade adversária. Inclui transferência dinâmica de posse com a bola em trânsito e *pass lockout* anti-colisão.
+    *   **Free-Space Positioning:** Posicionamento adaptativo sem bola por meio de varredura em grade espacial ($0.50\text{ m}$), mantendo os apoios (alas) constantemente desmarcados em linhas de passe limpas.
 *   **🧲 Navegação por APF Avançado:** Uso de Campos Potenciais Artificiais com "bolha de segurança" dinâmica e repulsão diferenciada para robôs e paredes, garantindo desvios suaves e eficientes.
 *   **🛡️ Goleiro Inteligente:** Posicionamento preditivo para interceptar chutes e lógica de "fechar o ângulo" baseada na bisseção do ângulo entre a bola e as traves.
 *   **👁️ Visualização com Groot:** Geração automática de arquivos XML compatíveis com o **Groot**, o editor visual padrão da indústria para Behavior Trees, permitindo depuração e design de táticas de forma gráfica.
 *   **🐳 100% Dockerizado:** O ambiente de desenvolvimento e execução é totalmente encapsulado em um contêiner Docker, garantindo consistência e eliminando problemas de dependências.
+*   **🧪 Suíte de Testes Automatizados:** Testes unitários cobrindo todos os motores de decisão tática e integrações da Behavior Tree.
 
 ---
 
@@ -214,15 +219,41 @@ labind-ssl-ai/
 ├── main.py
 │   └── Ponto de entrada e ciclo principal da estratégia
 │
+├── strategy/
+│   ├── Maestro.py
+│   │   └── Distribuição dinâmica de papéis e histerese tática
+│   ├── shot_scoring.py
+│   │   └── Motor geométrico de finalizações (Shot Scoring)
+│   ├── pass_scoring.py
+│   │   └── Motor multi-critério de passes e sincronia (Pass Scoring)
+│   ├── space_scoring.py
+│   │   └── Motor de exploração em grade espacial (Free-Space Positioning)
+│   └── tactical_utils.py
+│       └── Configurações de pesos, limiares e dataclasses táticas
+│
 ├── behavior_tree/
 │   ├── core.py
-│   │   └── Motor e classes base da Behavior Tree
-│   │
+│   │   └── Motor e classes base da Behavior Tree (Selector, Sequence, etc.)
 │   ├── conditions.py
-│   │   └── Condições utilizadas para tomada de decisão
-│   │
-│   └── actions.py
-│       └── Comportamentos e ações dos robôs
+│   │   └── Condições utilizadas para tomada de decisão (regras e scoring)
+│   ├── actions.py
+│   │   └── Comportamentos executivos e ações dos robôs
+│   └── trees/
+│       ├── attacker.py
+│       │   └── Árvores do atacante e atacantes de apoio
+│       ├── defense.py
+│       │   └── Árvores dos zagueiros e volante
+│       ├── support.py
+│       │   └── Árvores de meio-campo e laterais
+│       ├── goalkeeper.py
+│       │   └── Árvore do goleiro inteligente
+│       └── master.py
+│           └── Árvore mestra unificada para Groot
+│
+├── tests/
+│   ├── __init__.py
+│   └── test_tactical_scoring.py
+│       └── Suíte completa de testes automatizados (19 testes)
 │
 ├── proto_msg/
 │   └── Mensagens geradas a partir dos arquivos Protobuf
@@ -244,6 +275,18 @@ labind-ssl-ai/
 ├── .dockerignore
 ├── .gitignore
 └── README.md
+```
+
+---
+
+## 🧪 Testes Automatizados
+
+O projeto inclui uma suíte completa de testes unitários validando de ponta a ponta os motores táticos (`ShotScoring`, `PassScoring`, `FreeSpacePositioning`), detecção de bloqueios físicos, filtros de progressão, *pass lockout*, transferências dinâmicas no Maestro e integração com a Behavior Tree.
+
+Para executar todos os testes:
+
+```bash
+python3 -m unittest discover tests
 ```
 
 ---
