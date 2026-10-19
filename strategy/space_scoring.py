@@ -68,11 +68,18 @@ def evaluate_position(candidate: PositionCandidate, shared_data: dict) -> float:
     candidate.defensive_cover_score = _calc_defensive_cover(candidate.target_point, shared_data)
     candidate.safety_score = _calc_safety(candidate.target_point, shared_data)
 
-    # REGRA CRÍTICA: Se a linha de passe estiver totalmente bloqueada, penaliza drasticamente
+    # REGRAS CRÍTICAS RÍGIDAS (Hard Cutoffs)
+    # 1. Se a linha de passe estiver fisicamente bloqueada por qualquer robô, anula a posição
     if candidate.pass_line_score <= 0.0:
-        candidate.score = 0.10 * candidate.space_score # Score residual baixo
+        candidate.score = 0.0
         candidate.reason = "Linha de passe bloqueada por obstáculo."
-        return candidate.score
+        return 0.0
+
+    # 2. Se o ponto candidato estiver marcado de perto por adversário, anula a posição
+    if candidate.space_score <= 0.0:
+        candidate.score = 0.0
+        candidate.reason = "Ponto sob marcação direta de adversário."
+        return 0.0
 
     candidate.score = (
         (candidate.space_score * weights["space"]) +
@@ -110,11 +117,15 @@ def get_best_free_space_decision(world_model, blackboard, robot_id: int,
         if mate.visible and mate.id != robot_id
     ]
 
+    # Obstáculos capazes de bloquear fisicamente a linha de passe (adversários e companheiros)
+    pass_obstacles = opponents + teammates
+
     shared_data = {
         'ball_pos': (bx, by),
         'goal_x': goal_x,
         'opponents': opponents,
         'teammates': teammates,
+        'pass_obstacles': pass_obstacles,
         'robot_id': robot_id
     }
 
@@ -175,25 +186,40 @@ def get_best_free_space_decision(world_model, blackboard, robot_id: int,
 # --- Funções dos Componentes de Avaliação (0.0 a 1.0) ---
 
 def _calc_space(point: Tuple[float, float], data: dict) -> float:
-    """Avalia o isolamento do ponto em relação aos adversários mais próximos."""
+    """Avalia o isolamento do ponto em relação aos adversários e companheiros."""
     px, py = point
     opponents = data['opponents']
-    if not opponents:
-        return 1.0
+    teammates = data.get('teammates', [])
 
-    min_opp_dist = min(math.hypot(ox - px, oy - py) for ox, oy in opponents)
-    # A menos de 40cm é perigo extremo (score=0), a partir de 1.8m é espaço aberto pleno (score=1)
-    if min_opp_dist <= 0.40:
-        return 0.0
-    score = (min_opp_dist - 0.40) / (1.80 - 0.40)
-    return max(0.0, min(1.0, score))
+    # 1. Distância ao oponente mais próximo
+    if opponents:
+        min_opp_dist = min(math.hypot(ox - px, oy - py) for ox, oy in opponents)
+        # A menos de 40cm é perigo extremo (score=0), a partir de 1.8m é espaço aberto pleno (score=1)
+        if min_opp_dist <= 0.40:
+            return 0.0
+        opp_score = (min_opp_dist - 0.40) / (1.80 - 0.40)
+        opp_score = max(0.0, min(1.0, opp_score))
+    else:
+        opp_score = 1.0
+
+    # 2. Distância ao companheiro mais próximo (evita aglomeração com aliados no mesmo quadrante)
+    if teammates:
+        min_mate_dist = min(math.hypot(mx - px, my - py) for mx, my in teammates)
+        if min_mate_dist <= 0.60:
+            mate_score = max(0.0, (min_mate_dist - 0.20) / 0.40)
+        else:
+            mate_score = 1.0
+    else:
+        mate_score = 1.0
+
+    return min(opp_score, mate_score)
 
 
 def _calc_pass_line(point: Tuple[float, float], data: dict) -> float:
     """Calcula se há linha de passe desimpedida da bola até o ponto do grid."""
     bx, by = data['ball_pos']
     px, py = point
-    opponents = data['opponents']
+    obstacles = data.get('pass_obstacles', data.get('opponents', []))
 
     dx = px - bx
     dy = py - by
@@ -202,7 +228,11 @@ def _calc_pass_line(point: Tuple[float, float], data: dict) -> float:
         return 1.0
 
     min_dist_to_line = float('inf')
-    for ox, oy in opponents:
+    for ox, oy in obstacles:
+        # Se o robô for o passador na posse inicial da bola, não bloqueia a si mesmo
+        if math.hypot(ox - bx, oy - by) < 0.20:
+            continue
+
         # Projeção no segmento bola -> ponto
         t = ((ox - bx) * dx + (oy - by) * dy) / line_len_sq
         t = max(0.0, min(1.0, t))
@@ -256,20 +286,23 @@ def _calc_progression(point: Tuple[float, float], data: dict) -> float:
 
 
 def _calc_defensive_cover(point: Tuple[float, float], data: dict) -> float:
-    """Penaliza posições excessivamente avançadas sem retorno defensivo."""
+    """Avalia o equilíbrio ofensivo sem desguarnecer totalmente o retorno defensivo."""
     px, _ = point
     bx, _ = data['ball_pos']
     goal_x = data['goal_x']
 
     goal_dir = 1.0 if goal_x > 0 else -1.0
-    # Se o ponto estiver ligeiramente atrás ou alinhado com a bola, dá cobertura defensiva
     delta = goal_dir * (px - bx)
-    if delta <= 0.5:
+    
+    # Até 2.0m à frente da bola: excelente posição para infiltração e passe vertical (1.00)
+    # De 2.0m a 3.5m à frente da bola: opção avançada viável (0.80)
+    # Acima de 3.5m à frente da bola: excessivamente adiantado em relação à posse (0.50)
+    if delta <= 2.0:
         return 1.00
-    elif delta <= 2.0:
-        return 0.70
+    elif delta <= 3.5:
+        return 0.80
     else:
-        return 0.40
+        return 0.50
 
 
 def _calc_safety(point: Tuple[float, float], data: dict) -> float:
