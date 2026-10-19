@@ -252,8 +252,10 @@ labind-ssl-ai/
 │
 ├── tests/
 │   ├── __init__.py
-│   └── test_tactical_scoring.py
-│       └── Suíte completa de testes automatizados (19 testes)
+│   ├── test_tactical_scoring.py
+│   │   └── Testes de Shot, Pass e Free-Space Scoring (19 testes)
+│   └── test_shielding.py
+│       └── Testes de Body Shielding, Desacoplamento APF e Divisão A (10 testes)
 │
 ├── proto_msg/
 │   └── Mensagens geradas a partir dos arquivos Protobuf
