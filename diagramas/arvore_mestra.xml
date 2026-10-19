@@ -73,6 +73,11 @@
               </Sequence>
               <Sequence>
                 <Condition ID="ConditionIsNearBall"/>
+                <Condition ID="ConditionIsUnderPressure" danger_radius="None"/>
+                <Action ID="ActionShieldBall" max_duration="None" max_distance="None"/>
+              </Sequence>
+              <Sequence>
+                <Condition ID="ConditionIsNearBall"/>
                 <Condition ID="ConditionIsInShootingZone"/>
                 <Action ID="ActionFindShootingAngle" max_duration="1.5"/>
               </Sequence>

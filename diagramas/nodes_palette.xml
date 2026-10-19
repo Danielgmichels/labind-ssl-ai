@@ -37,6 +37,10 @@
       <input_port name="distancia"/>
     </Action>
     <Action ID="ActionPrepareKickoff"/>
+    <Action ID="ActionShieldBall">
+      <input_port name="max_duration"/>
+      <input_port name="max_distance"/>
+    </Action>
     <Action ID="ActionSmartDribble"/>
     <Action ID="ActionStopMotors"/>
     <Action ID="ActionVolanteDefensivo"/>
@@ -64,5 +68,8 @@
     <Condition ID="ConditionIsPassArriving"/>
     <Condition ID="ConditionIsPassClear"/>
     <Condition ID="ConditionIsPathClear"/>
+    <Condition ID="ConditionIsUnderPressure">
+      <input_port name="danger_radius"/>
+    </Condition>
   </TreeNodesModel>
 </root>

@@ -1,6 +1,7 @@
 import math
 import time
 from .core import Node, NodeState
+from strategy.tactical_utils import TACTICAL_CONFIG
 
 # ==========================================
 # NÓS DE AÇÃO SIMPLES (Segurança)
@@ -189,6 +190,124 @@ class ActionSmartDribble(Node):
         return NodeState.RUNNING
 
 
+class ActionShieldBall(Node):
+    """
+    Protege a posse de bola usando a carcaça física do robô (Body Shielding).
+    Gira o chassi para manter a traseira voltada contra o adversário mais próximo,
+    protegendo o rolete frontal e a bola contra tentativas de desarme.
+    Executa evasão tangencial em direção ao espaço livre e monitora o limite
+    de drible da SSL Divisão A (máx 0.8m / 1.5s) antes de ceder a posse com FAILURE
+    para ativar o passe de recuo.
+    """
+    def __init__(self, max_duration=None, max_distance=None):
+        super().__init__()
+        self.max_duration = max_duration
+        self.max_distance = max_distance
+        self.start_time = None
+        self.start_x = None
+        self.start_y = None
+        self.last_tick_time = 0.0
+
+    def tick(self, blackboard):
+        if blackboard.my_pos is None:
+            return NodeState.FAILURE
+
+        shield_cfg = TACTICAL_CONFIG.get("SHIELD", {})
+        limit_duration = self.max_duration if self.max_duration is not None else shield_cfg.get("max_shield_duration", 1.50)
+        limit_distance = self.max_distance if self.max_distance is not None else shield_cfg.get("max_shield_distance", 0.80)
+        dribbler_rpm = shield_cfg.get("dribbler_speed", 1500.0)
+        tangent_dist = shield_cfg.get("tangent_distance", 0.60)
+        field_margin_y = shield_cfg.get("field_margin_y", 2.60)
+
+        now = time.time()
+        # Reinicia odômetro se a ação foi interrompida por mais de 0.3s
+        if self.start_time is None or (now - self.last_tick_time) > 0.3:
+            self.start_time = now
+            self.start_x = blackboard.my_pos.pos.x
+            self.start_y = blackboard.my_pos.pos.y
+        self.last_tick_time = now
+
+        # 1. Checagem do Odômetro e Tempo Limite (Regulamento SSL Divisão A)
+        elapsed_time = now - self.start_time
+        dist_percorrida = math.hypot(blackboard.my_pos.pos.x - self.start_x,
+                                     blackboard.my_pos.pos.y - self.start_y)
+
+        # Se atingiu o limite de condução ou tempo, falha para liberar o passe de recuo
+        if elapsed_time > limit_duration or dist_percorrida > limit_distance:
+            self.start_time = None
+            return NodeState.FAILURE
+
+        # 2. Identificação do Adversário Ameaçador
+        threatening_enemy = getattr(blackboard, 'threatening_enemy', None)
+        if threatening_enemy is None:
+            danger_radius = shield_cfg.get("danger_radius", 0.75)
+            min_dist = float('inf')
+            enemies = getattr(blackboard, 'enemies', [])
+            for obs in enemies:
+                if abs(obs.pos.x) < 0.001 and abs(obs.pos.y) < 0.001:
+                    continue
+                d = math.hypot(obs.pos.x - blackboard.my_pos.pos.x,
+                               obs.pos.y - blackboard.my_pos.pos.y)
+                if d < danger_radius and d < min_dist:
+                    min_dist = d
+                    threatening_enemy = obs
+
+        # Se não há adversário pressionando, a blindagem cumpriu o papel e autoriza ações livres
+        if threatening_enemy is None:
+            self.start_time = None
+            return NodeState.SUCCESS
+
+        # 3. Geometria de Blindagem (Shield Angle)
+        # Vetor do nosso robô para o adversário
+        dx_enemy = threatening_enemy.pos.x - blackboard.my_pos.pos.x
+        dy_enemy = threatening_enemy.pos.y - blackboard.my_pos.pos.y
+        angulo_adversario = math.atan2(dy_enemy, dx_enemy)
+
+        # Target Yaw: Oposto ao adversário (+ pi) para virar a carcaça traseira contra ele
+        target_yaw = (angulo_adversario + math.pi + math.pi) % (2 * math.pi) - math.pi
+
+        # 4. Evasão Tangencial (Escape Perpendicular ao Adversário)
+        tangente_1 = angulo_adversario + (math.pi / 2.0)
+        tangente_2 = angulo_adversario - (math.pi / 2.0)
+
+        # Projeta pontos candidatos
+        cand1_x = blackboard.my_pos.pos.x + tangent_dist * math.cos(tangente_1)
+        cand1_y = blackboard.my_pos.pos.y + tangent_dist * math.sin(tangente_1)
+
+        cand2_x = blackboard.my_pos.pos.x + tangent_dist * math.cos(tangente_2)
+        cand2_y = blackboard.my_pos.pos.y + tangent_dist * math.sin(tangente_2)
+
+        score1 = 0.0
+        score2 = 0.0
+
+        if abs(cand1_y) < field_margin_y: score1 += 1.0
+        if abs(cand2_y) < field_margin_y: score2 += 1.0
+
+        # Favorece progredir levemente ao ataque se houver espaço
+        direcao_ataque = 1.0 if blackboard.enemy_goal_x > 0 else -1.0
+        if (cand1_x - blackboard.my_pos.pos.x) * direcao_ataque > 0: score1 += 0.5
+        if (cand2_x - blackboard.my_pos.pos.x) * direcao_ataque > 0: score2 += 0.5
+
+        if score1 >= score2:
+            alvo_x, alvo_y = cand1_x, cand1_y
+        else:
+            alvo_x, alvo_y = cand2_x, cand2_y
+
+        alvo_y = max(-field_margin_y, min(alvo_y, field_margin_y))
+
+        # 5. Navegação APF com Orientação Desacoplada
+        vf, vl, vw = blackboard.controller.calculate_velocity(
+            blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw,
+            alvo_x, alvo_y, blackboard.obstacles, target_yaw=target_yaw
+        )
+
+        blackboard.action.send_command(
+            robot_id=blackboard.my_id, v_forward=vf, v_left=vl, vw=vw,
+            kick_speed=0.0, dribbler_speed=dribbler_rpm
+        )
+        return NodeState.RUNNING
+
+
 class ActionAimAndShoot(Node):
     """Gira no próprio eixo mirando no alvo livre (best_shot_y) e atira."""
     def tick(self, blackboard):
@@ -250,6 +369,20 @@ class ActionFindShootingAngle(Node):
         if (now - self.start_time > self.max_duration) or abs(blackboard.my_pos.pos.y) > 2.8:
             self.start_time = None
             return NodeState.FAILURE
+
+        # Se um adversário estiver fechando imediatamente na nossa frente,
+        # falha para que a árvore ative a blindagem corporal ou passe em vez de expor a bola
+        if hasattr(blackboard, 'enemies'):
+            for obs in blackboard.enemies:
+                if abs(obs.pos.x) < 0.001 and abs(obs.pos.y) < 0.001:
+                    continue
+                d = math.hypot(obs.pos.x - blackboard.my_pos.pos.x, obs.pos.y - blackboard.my_pos.pos.y)
+                if d < 0.60:
+                    ang = math.atan2(obs.pos.y - blackboard.my_pos.pos.y, obs.pos.x - blackboard.my_pos.pos.x)
+                    err = (ang - blackboard.my_pos.yaw + math.pi) % (2 * math.pi) - math.pi
+                    if abs(err) < 0.8:
+                        self.start_time = None
+                        return NodeState.FAILURE
 
         gol_inimigo_x = blackboard.enemy_goal_x
         gol_inimigo_y = 0.0

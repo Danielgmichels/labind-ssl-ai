@@ -4,6 +4,7 @@ from .core import Node, NodeState
 from strategy.shot_scoring import get_best_shot_decision
 from strategy.pass_scoring import get_best_pass_decision
 from strategy.space_scoring import get_best_free_space_decision
+from strategy.tactical_utils import TACTICAL_CONFIG
 
 # ==========================================
 # NÓS DE CONDIÇÃO (O Juiz)
@@ -431,4 +432,48 @@ class ConditionEvaluateFreeSpace(Node):
             blackboard.free_space_target = decision.best_target_point
             return NodeState.SUCCESS
 
+        return NodeState.FAILURE
+
+
+class ConditionIsUnderPressure(Node):
+    """
+    Retorna SUCCESS se houver um adversário dentro do raio de perigo (danger_radius),
+    ameaçando roubar a posse de bola.
+    Salva o adversário mais próximo em blackboard.threatening_enemy.
+    """
+    def __init__(self, danger_radius=None):
+        super().__init__()
+        self.danger_radius = danger_radius
+
+    def tick(self, blackboard):
+        if blackboard.my_pos is None:
+            return NodeState.FAILURE
+
+        threshold = self.danger_radius
+        if threshold is None:
+            threshold = TACTICAL_CONFIG.get("SHIELD", {}).get("danger_radius", 0.75)
+
+        closest_enemy = None
+        min_dist = float('inf')
+
+        enemies = getattr(blackboard, 'enemies', [])
+        for obs in enemies:
+            # Ignora posições nulas/inválidas do simulador
+            if abs(obs.pos.x) < 0.001 and abs(obs.pos.y) < 0.001:
+                continue
+
+            dist = math.hypot(obs.pos.x - blackboard.my_pos.pos.x,
+                              obs.pos.y - blackboard.my_pos.pos.y)
+
+            if dist < threshold and dist < min_dist:
+                min_dist = dist
+                closest_enemy = obs
+
+        if closest_enemy is not None:
+            blackboard.threatening_enemy = closest_enemy
+            blackboard.threat_distance = min_dist
+            return NodeState.SUCCESS
+
+        blackboard.threatening_enemy = None
+        blackboard.threat_distance = None
         return NodeState.FAILURE
