@@ -64,6 +64,15 @@ TACTICAL_CONFIG = {
             "defensive_cover": 0.10,
             "safety": 0.10
         }
+    },
+    "SHIELD": {
+        "danger_radius": 0.75,          # Raio de ativação da proteção por aproximação (m)
+        "immediate_threat_radius": 0.50,# Raio de perigo iminente (m)
+        "max_shield_duration": 1.50,    # Tempo limite contínuo sob blindagem antes de forçar passe (s)
+        "max_shield_distance": 0.80,    # Distância máxima de condução contínua (m, regra de 1m SSL Divisão A)
+        "dribbler_speed": 1500.0,       # Rotação do rolete durante a blindagem (RPM)
+        "tangent_distance": 0.60,       # Distância projetada para o waypoint de evasão tangencial (m)
+        "field_margin_y": 2.60          # Limite de segurança no eixo Y para não sair de campo (m)
     }
 }
 
