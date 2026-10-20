@@ -76,6 +76,14 @@ def evaluate_pass(candidate: PassCandidate, shared_data: dict) -> float:
         candidate.reason = "Trajetória de passe fisicamente bloqueada/interceptada."
         return 0.0
 
+    # REGRA CRÍTICA DE ESPAÇO LIVRE (MARCAÇÃO COLADA):
+    # Se o receptor estiver marcado de perto (a menos de 35cm de um adversário),
+    # o passe é invalidado (score 0.0) para evitar perda imediata de posse.
+    if candidate.space_score <= 0.0:
+        candidate.score = 0.0
+        candidate.reason = "Receptor sob marcação colada / sem espaço."
+        return 0.0
+
     candidate.score = (
         (candidate.progression_score * weights["progression"]) +
         (candidate.space_score * weights["space"]) +
@@ -194,8 +202,10 @@ def _calc_space(target_point: Tuple[float, float], data: dict) -> float:
         return 1.0
 
     closest_dist = min(math.hypot(ox - rx, oy - ry) for ox, oy in opponents)
-    # Menos de 30cm é marcação colada (score 0), 1.5m ou mais é livre (score 1)
-    score = (closest_dist - 0.30) / 1.20
+    # Menos de 35cm é marcação colada (score 0), 1.50m ou mais é livre (score 1)
+    if closest_dist <= 0.35:
+        return 0.0
+    score = (closest_dist - 0.35) / (1.50 - 0.35)
     return max(0.0, min(1.0, score))
 
 def _calc_reception_angle(candidate: PassCandidate, data: dict) -> float:
@@ -267,11 +277,13 @@ def _calc_interception(target_point: Tuple[float, float], receiver_id: int, data
     min_dist_to_line = float('inf')
 
     for ox, oy in obstacles:
+        # Se for o próprio passador no ponto de saída, ignora
+        if math.hypot(ox - px, oy - py) < 0.18:
+            continue
+
         # Projeção no segmento entre passador e receptor
         t = ((ox - px) * dx + (oy - py) * dy) / line_length_sq
-        if t < 0.05 or t > 0.95:
-            # Perto demais dos extremos (tolerância do próprio robô)
-            continue
+        t = max(0.0, min(1.0, t))
 
         proj_x = px + t * dx
         proj_y = py + t * dy
@@ -281,7 +293,7 @@ def _calc_interception(target_point: Tuple[float, float], receiver_id: int, data
             min_dist_to_line = dist
 
     config = TACTICAL_CONFIG["PASS"]
-    collision_radius = config.get("collision_radius", 0.18)
+    collision_radius = config.get("collision_radius", 0.20)
     safe_margin = config.get("safe_margin", 0.50)
 
     if min_dist_to_line <= collision_radius:

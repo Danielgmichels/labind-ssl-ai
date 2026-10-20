@@ -20,20 +20,20 @@ TACTICAL_CONFIG = {
         }
     },
     "PASS": {
-        "min_score": 0.50,         # Limiar mínimo aceitável para autorizar o passe
+        "min_score": 0.55,         # Limiar mínimo aceitável para autorizar o passe (mais crítico)
         "min_distance": 0.70,      # Distância mínima viável (m)
         "max_distance": 6.00,      # Distância máxima viável (m)
-        "collision_radius": 0.18,  # Raio de bloqueio físico na linha de passe (m)
+        "collision_radius": 0.20,  # Raio de bloqueio físico na linha de passe (m)
         "safe_margin": 0.50,       # Margem segura livre de interceptação (m)
         "density_radius": 1.20,    # Raio de busca de adversários em volta do receptor (m)
         "weights": {
-            "progression": 0.25,
-            "space": 0.15,
-            "reception_angle": 0.15,
-            "distance": 0.10,
-            "support": 0.15,
-            "interception": 0.15,
-            "density": 0.05
+            "interception": 0.30,  # Prioridade máxima: linha de passe desimpedida
+            "space": 0.25,         # Receptor livre de marcação direta
+            "progression": 0.20,   # Ganho vertical em direção ao ataque
+            "reception_angle": 0.10,# Alinhamento frontal para domínio
+            "support": 0.05,       # Preferência tática do papel (peso reduzido para não mascarar marcação)
+            "distance": 0.05,      # Faixa operacional confortável
+            "density": 0.05        # Densidade de oponentes no entorno
         },
         "role_support_scores": {
             "ATACANTE_APOIO_ESQ": 1.00,

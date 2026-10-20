@@ -144,15 +144,16 @@ class ConditionIsPassArriving(Node):
             return NodeState.FAILURE
             
         speed = math.hypot(blackboard.ball_vel_x, blackboard.ball_vel_y)
-        if speed < 0.6: # Bola lenta demais, compensa dominar normal
+        if speed < 0.5: # Bola lenta demais, compensa dominar normal
             return NodeState.FAILURE
             
-        # Vetor do robô apontando para a bola
+        # Vetor da bola apontando para o robô
         dx_robo = blackboard.my_pos.pos.x - blackboard.ball_pos.x
         dy_robo = blackboard.my_pos.pos.y - blackboard.ball_pos.y
         dist_robo = math.hypot(dx_robo, dy_robo)
         
-        if dist_robo == 0 or dist_robo > 3.0: 
+        # Alcance estendido para cobrir toda a faixa operacional de passe (até 5.5m)
+        if dist_robo == 0 or dist_robo > 5.5: 
             return NodeState.FAILURE # Longe demais da jogada
             
         # Produto Escalar (Dot Product) para saber se a bola vem na nossa direção
@@ -164,8 +165,12 @@ class ConditionIsPassArriving(Node):
         
         dot_product = (nx_bola * nx_robo) + (ny_bola * ny_robo)
         
-        # Se for > 0.7, a trajetória da bola aponta diretamente (cone de ~45º) para o robô!
-        if dot_product > 0.7: 
+        # Se for o receptor designado pelo passador/Maestro, tolerância estendida (min_dot = 0.40)
+        # para reagir prontamente mesmo durante a aceleração inicial do disparo
+        is_target = getattr(blackboard, 'pass_in_progress_target', None) == blackboard.my_id
+        min_dot = 0.40 if is_target else 0.65
+
+        if dot_product > min_dot: 
             return NodeState.SUCCESS
             
         return NodeState.FAILURE

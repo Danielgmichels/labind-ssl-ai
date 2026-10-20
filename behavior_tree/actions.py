@@ -114,15 +114,22 @@ class ActionGoToBall(Node):
             alvo_y = max(-1.2, min(alvo_y, 1.2))
 
 
-        # APF para calcular o caminho, desviando de robôs e das paredes virtuais[cite: 1]
+        # APF para calcular o caminho, desviando de robôs e das paredes virtuais
         vf, vl, vw = blackboard.controller.calculate_velocity(
             blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw, 
             alvo_x, alvo_y, blackboard.obstacles
         )
         
+        # PASS RECEPTION ASSIST: Se este robô é o alvo do passe em andamento,
+        # aciona o driblador para travar a bola e amortecer o domínio sem ricochete
+        last_pass_time = getattr(blackboard, 'last_pass_time', 0.0)
+        pass_target = getattr(blackboard, 'pass_in_progress_target', None)
+        is_receiving = (time.time() - last_pass_time < 1.5) and (blackboard.my_id == pass_target)
+        dribbler = 1500.0 if is_receiving else 0.0
+
         blackboard.action.send_command(
             robot_id=blackboard.my_id, v_forward=vf, v_left=vl, vw=vw,
-            kick_speed=0.0, dribbler_speed=0.0
+            kick_speed=0.0, dribbler_speed=dribbler
         )
         return NodeState.RUNNING
 
@@ -348,7 +355,7 @@ class ActionAimAndShoot(Node):
 
 class ActionFindShootingAngle(Node):
     """Fica de frente para o gol rodando o driblador e anda de lado (Strafing) até abrir espaço."""
-    def __init__(self, max_duration=1.5):
+    def __init__(self, max_duration=0.8):
         super().__init__()
         self.max_duration = max_duration
         self.start_time = None
@@ -487,20 +494,21 @@ class ActionPassBall(Node):
         
         raio_do_robo = 0.09 
         vl = vw * raio_do_robo 
-        vf = 0.1
+        vf = 0.05
         velocidade_chute = 0.0
         dribbler = 1500.0
         
         # === A CORREÇÃO DO SNIPER VEM AQUI ===
-        # Exige alinhamento quase perfeito (0.02 radianos) antes de soltar a bomba
-        if abs(erro_angular) < 0.02:
+        # Exige alinhamento angular refinado antes do disparo (0.05 rad / ~2.8 graus)
+        # para alinhamento rápido e responsivo, eliminando a demora do atacante
+        if abs(erro_angular) < 0.05:
             vw = 0.0
             vl = 0.0
             
             # Calcula a distância até o ponto de encontro para definir a força
             dist_passe = math.hypot(alvo_x - blackboard.my_pos.pos.x, alvo_y - blackboard.my_pos.pos.y)
-            # Garante força mínima de 2.5 m/s para não morrer no atrito do piso
-            velocidade_chute = max(2.5, min(dist_passe * 2.2, 6.0))
+            # Potência calibrada para passe controlado (2.2 a 3.5 m/s) para amortecimento e recepção firme
+            velocidade_chute = max(2.2, min(1.8 + dist_passe * 0.45, 3.5))
             
             # FREIA O ROBÔ: Garante que a bola bata limpa no chutador e não nas rodas
             vf = 0.0 
@@ -554,6 +562,16 @@ class ActionInterceptPass(Node):
             blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw, 
             intercept_x, intercept_y, [] 
         )
+
+        # Boost de aceleração na recepção: se houver erro em relação à trajetória,
+        # assegura velocidade de aproximação suficiente (>= 0.9 m/s) para fechar o corredor a tempo
+        dist_interc = math.hypot(intercept_x - blackboard.my_pos.pos.x, intercept_y - blackboard.my_pos.pos.y)
+        if dist_interc > 0.08:
+            mag = math.hypot(vf, vl)
+            if 0.01 < mag < 0.9:
+                boost = 0.9 / mag
+                vf *= boost
+                vl *= boost
         
         # 3. Gira para olhar diretamente para a BOLA
         target_angle = math.atan2(blackboard.ball_pos.y - blackboard.my_pos.pos.y, 
@@ -564,7 +582,7 @@ class ActionInterceptPass(Node):
         vw = erro_angular * blackboard.controller.kp_angular
         vw = max(min(vw, blackboard.controller.max_angular_vel), -blackboard.controller.max_angular_vel)
         
-        # 4. Motor e Driblador
+        # 4. Motor e Driblador (1500 RPM ativo para travar e amortecer o impacto)
         blackboard.action.send_command(
             robot_id=blackboard.my_id, v_forward=vf, v_left=vl, vw=vw,
             kick_speed=0.0, dribbler_speed=1500.0

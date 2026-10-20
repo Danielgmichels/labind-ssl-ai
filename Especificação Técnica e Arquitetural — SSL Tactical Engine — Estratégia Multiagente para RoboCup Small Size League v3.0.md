@@ -870,60 +870,72 @@ Ao atingir a precisão, o robô freia a translação (`vf = 0.0, vl = 0.0`), lig
 
 ---
 
-# 22. Passe — Pass Scoring Engine [IMPLEMENTADO]
+# 22. Passe — Pass Scoring Engine [IMPLEMENTADO & CALIBRADO]
 
-A seleção de receptores de passe foi modernizada para um **motor de pontuação multi-critério** (`strategy/pass_scoring.py`), substituindo a seleção linear do primeiro companheiro com linha desimpedida.
+A seleção de receptores de passe foi modernizada para um **motor de pontuação multi-critério estrito** (`strategy/pass_scoring.py`), substituindo a seleção linear do primeiro companheiro com linha desimpedida e eliminando aprovações permissivas de passes contestados.
 
 O motor avalia simultaneamente todos os companheiros visíveis e elegíveis (excluindo o próprio passador, o goleiro e robôs fora da faixa de 0.70m a 6.00m).
 
-Cada companheiro é avaliado segundo 7 fatores ponderados:
+Cada companheiro é avaliado segundo 7 fatores ponderados e calibrados:
 
 ```text
 Score_passe =
-    0.25 * progression_score
-  + 0.15 * space_score
-  + 0.15 * reception_angle_score
-  + 0.10 * distance_score
-  + 0.15 * support_score
-  + 0.15 * interception_score
+    0.30 * interception_score
+  + 0.25 * space_score
+  + 0.20 * progression_score
+  + 0.10 * reception_angle_score
+  + 0.05 * support_score
+  + 0.05 * distance_score
   + 0.05 * density_score
 ```
 
-### Componentes de Avaliação:
+### Componentes de Avaliação e Regras Críticas de Veto:
 
-1. **Progressão Longitudinal (`progression_score`, peso 0.25):**
+1. **Linha de Intercepção (`interception_score`, peso 0.30) — Regra Rígida de Bloqueio:**
+   - Projeção ortogonal de todos os adversários e aliados sobre o segmento passador $\rightarrow$ receptor, avaliando todo o trajeto.
+   - Se houver adversário a menos de `collision_radius = 0.20 m`, `interception_score = 0.0` e o candidato é **imediatamente anulado (`score = 0.0`)**, eliminando qualquer risco de perda de posse em trajetórias obstruídas.
+2. **Espaço Livre (`space_score`, peso 0.25) — Regra Rígida de Marcação Colada:**
+   - Distância do receptor ao adversário mais próximo.
+   - Se o receptor estiver marcado de perto ($\le 0.35\text{ m}$ de um rival), `space_score = 0.0` e o passe é **vetado sumariamente (`score = 0.0`)**, impedindo passes forçados em companheiros abafados pela marcação.
+3. **Progressão Longitudinal (`progression_score`, peso 0.20):**
    - Passes para frente ($\Delta_{prog} \ge 0$): nota de 0.50 a 1.00 baseada no ganho de metros em direção ao gol inimigo.
-   - Passes para trás ($\Delta_{prog} < 0$): penalizados proporcionalmente à distância recuada (nota entre 0.00 e 0.30 no campo ofensivo), preservando sua viabilidade como recurso de giro de jogo, mas impedindo que superem jogadas de ataque.
-2. **Espaço Livre (`space_score`, peso 0.15):** Distância do receptor ao adversário mais próximo (raio confortável $\ge 1.5\text{ m}$).
-3. **Ângulo de Recepção (`reception_angle_score`, peso 0.15):** Facilidade angular para o receptor dominar a bola e dar continuidade à jogada em direção ao gol.
-4. **Distância Operacional (`distance_score`, peso 0.10):** Penalização de passes curtos demais (< 1.0m) ou excessivamente longos (> 5.0m), com pico ideal entre 2.0m e 3.5m.
-5. **Função Tática do Receptor (`support_score`, peso 0.15):** Priorização baseada na tabela de papéis:
+   - Passes para trás ($\Delta_{prog} < 0$): penalizados proporcionalmente à distância recuada (nota entre 0.00 e 0.30 no campo ofensivo), preservando sua viabilidade como recurso de giro de jogo quando o receptor estiver em espaço aberto pleno.
+4. **Ângulo de Recepção (`reception_angle_score`, peso 0.10):** Facilidade angular para o receptor dominar a bola e dar continuidade à jogada em direção ao gol.
+5. **Função Tática do Receptor (`support_score`, peso 0.05):** Peso reduzido para mero critério de desempate, assegurando que o nome do papel tático não mascare marcação adversária:
    - `ATACANTE_APOIO_ESQ` / `DIR`: 1.00
    - `MEIA_ARMADOR`: 0.90
    - `LATERAL_ESQUERDO` / `DIREITO`: 0.75
    - `MEIO_CAMPO`: 0.65
    - `VOLANTE`: 0.40
    - `ZAGUEIROS`: 0.15 ~ 0.20
-6. **Linha de Intercepção (`interception_score`, peso 0.15) — Regra Rígida:**
-   - Projeção ortogonal de todos os adversários sobre o segmento passador $\rightarrow$ receptor.
-   - Se houver adversário a menos de `collision_radius = 0.18 m`, `interception_score = 0.0` e o candidato é **anulado**.
+6. **Distância Operacional (`distance_score`, peso 0.05):** Faixa ideal entre 1.5m e 3.5m, penalizando passes extremos (< 1.0m ou > 5.0m).
 7. **Densidade de Oponentes (`density_score`, peso 0.05):** Contagem de oponentes em um raio de 1.20m em torno do receptor.
 
-O melhor candidato com score $\ge 0.50$ é selecionado. A condição `ConditionEvaluatePass` suporta o modo `only_forward=True` (exige $\text{progression\_score} \ge 0.50$) e `only_forward=False` (permite recuos).
+Apenas candidatos com score rigoroso $\ge 0.55$ são homologados. A condição `ConditionEvaluatePass` suporta o modo `only_forward=True` (exige $\text{progression\_score} \ge 0.50$) e `only_forward=False` (permite recuos).
 
 ---
 
 # 23. Potência e Mecânica do Passe
 
-A execução do passe pela `ActionPassBall` segue três princípios mecânicos e de controle fundamentais:
+A execução do passe pela `ActionPassBall` e a recepção pela `ActionInterceptPass` seguem princípios cinemáticos refinados para garantir fluidez e precisão de recepção:
 
-1. **Força Mínima de Chute:**
+1. **Força Calibrada de Chute (Potência Controlada):**
    A potência do chute é calculada por:
-   $$kick\_speed = \max(2.5, \min(distancia \times 2.2, 6.0))$$
-   garantindo que mesmo passes curtos (1.0m) sejam disparados a no mínimo $2.5\text{ m/s}$, impedindo que a bola morra prematuramente pelo atrito com o piso/carpete.
-2. **Desligamento do Driblador na Soltura:**
-   Ao atingir o alinhamento angular ($< 0.02\text{ rad}$), o comando zera a velocidade do motor de drible (`dribbler_speed = 0.0`), permitindo que a bola se desprenda limpa da frente do robô sem atrito reverso ou desaceleração.
-3. **Pass Lockout e Sincronia Temporal:**
+   $$kick\_speed = \max(2.2, \min(1.8 + distancia \times 0.45, 3.5))$$
+   - Garante força mínima de $2.2\text{ m/s}$ para que a bola vença o atrito com o piso/carpete sem morrer prematuramente.
+   - Limita a velocidade máxima a $3.5\text{ m/s}$ (em vez do limite brusco de $6.0\text{ m/s}$), proporcionando uma bola controlada que o rolete frontal do receptor consegue amortecer e segurar sem ricochetear.
+2. **Alinhamento Angular Ágil (Redução da Demora do Atacante):**
+   Ao atingir tolerância angular calibrada:
+   ```text
+   |erro_angular| < 0.05 rad (~2.8 graus)
+   ```
+   o robô autoriza o disparo imediato, eliminando oscilações milimétricas lentas no ponto de giro. Na soltura, zera a rotação e a velocidade do motor de drible (`dribbler_speed = 0.0`), liberando a bola limpa sem atrito reverso.
+3. **Recepção Ativa com Alcance Estendido e Boost de Intercepção:**
+   - A `ConditionIsPassArriving` opera com raio estendido de até $5.5\text{ m}$, detectando prontamente passes longos assim que disparados.
+   - Para o receptor designado (`pass_in_progress_target == my_id`), o cone de sensibilidade opera com tolerância ampliada ($\text{min\_dot} = 0.40$), iniciando a movimentação de intercepção desde os primeiros milissegundos do chute.
+   - A `ActionInterceptPass` aplica um *boost* de velocidade ($v \ge 0.9\text{ m/s}$) caso haja desalinhamento lateral, garantindo que o robô feche o corredor e se coloque à frente da bola a tempo.
+   - A `ActionGoToBall` mantém o rolete a 1500 RPM ativo caso o robô esteja recebendo passe em andamento, impedindo que a bola colida com a lataria desligada.
+4. **Pass Lockout e Sincronia Temporal:**
    No milissegundo do disparo, o passador registra:
    ```python
    blackboard.last_pass_time = time.time()
@@ -942,8 +954,8 @@ Quando não há oportunidade limpa de finalização imediata nem passe ofensivo 
 ### 24.1 Busca de Ângulo Lateral (`ActionFindShootingAngle`)
 - O robô mantém o driblador a 1500 RPM segurando a bola e executa passadas laterais (*strafing* com $v_l = \pm 1.0\text{ m/s}, v_f \approx 0.1\text{ m/s}$) mantendo a orientação apontada para o gol adversário.
 - Objetivo: deslocar-se lateralmente para sair de trás da barreira estática e abrir um corredor de finalização para os cantos da trave.
+- **Temporizador Dinâmico:** Encerra após $0.8\text{ s}$ (calibrado para evitar congelamento da posse) ou se aproximar das linhas laterais ($|y| > 2.8\text{m}$), retornando `FAILURE` para autorizar a árvore a tentar o drible ou passe de recuo.
 - **Salvaguarda de Perigo Frontal Imediato (v3.2):** Se um marcador adversário fechar o cone frontal a menos de $0.60\text{ m}$ ($|\Delta \theta| < 0.8\text{ rad}$), a ação encerra imediatamente com `FAILURE`, impedindo o choque frontal de roletes e transferindo a decisão para a blindagem ou passe.
-- Possui salvaguardas de estabilidade: encerra após 1.5s ou se aproximar das linhas laterais do campo ($|y| > 2.8\text{m}$), retornando `FAILURE` para autorizar outras ações (blindagem, drible ou passe de recuo).
 
 ### 24.2 Drible Evasivo Frontal (`ActionSmartDribble`)
 - Conduz a bola em direção ao gol adversário em campo aberto.
@@ -2335,7 +2347,7 @@ Esta versão consolida os seguintes pilares fundamentais no projeto:
 
 A robustez da tomada de decisão, da navegação desacoplada e da coordenação multiagente é assegurada por suítes de testes unitários automatizados localizadas em `tests/test_tactical_scoring.py` e `tests/test_shielding.py`.
 
-A suíte cobre **29 cenários determinísticos**, incluindo:
+A suíte cobre **36 cenários determinísticos**, incluindo:
 
 1. **Shot Scoring (5 testes em `test_tactical_scoring.py`):**
    - Gol aberto: centro do gol altamente pontuado.
@@ -2343,18 +2355,23 @@ A suíte cobre **29 cenários determinísticos**, incluindo:
    - Barreira completa: rejeição segura de finalizações inviáveis (retorna `None` e mantém posse).
    - Aliado bloqueando: aliados tratados estritamente como obstáculos físicos.
    - Progressão longitudinal: recompensa proporcional ao avanço da bola.
-2. **Pass Scoring (9 testes em `test_tactical_scoring.py`):**
+2. **Pass Scoring & Recepção Refinada (13 testes em `test_tactical_scoring.py`):**
    - Seleção de receptor desmarcado em relação a companheiro bloqueado.
    - Rejeição absoluta de trajetórias com oponente interceptando a reta.
+   - Veto sumário (`score = 0.0`) a receptores sob marcação colada ($\le 0.35\text{ m}$).
+   - Bloqueio estrito de adversários posicionados na frente do receptor.
    - Comparação entre receptor avançado e recuado (preferência pelo ganho territorial).
    - Validação da viabilidade de passes de recuo como alternativa segura de reciclagem de posse.
    - Funcionamento do filtro de avanço rápido `only_forward=True`.
    - Proteção de auto-perseguição (*Pass Lockout*) na `ActionGoToBall`.
    - Transferência de papel no `Maestro` promovendo o receptor antes da chegada física da bola.
+   - Acionamento preditivo de recepção com alcance estendido até $5.5\text{ m}$ em `ConditionIsPassArriving`.
+   - Ativação do rolete a 1500 RPM na `ActionGoToBall` durante recepção para evitar ricochete na lataria.
    - Integração com as Conditions da Behavior Tree (`ConditionEvaluateShot` e `ConditionEvaluatePass`).
-3. **Free-Space Positioning (5 testes em `test_tactical_scoring.py`):**
+3. **Free-Space Positioning (8 testes em `test_tactical_scoring.py`):**
    - Identificação precisa de regiões de espaço livre e desmarcadas na ala ofensiva.
-   - Contorno de linhas de passe obstruídas por adversários.
+   - Contorno de linhas de passe obstruídas por adversários e companheiros.
+   - Rejeição absoluta por corte rígido em linhas bloqueadas e aglomeração com aliados.
    - Histerese temporal com `stability_bonus` e `switch_margin`, impedindo oscilações indesejadas a 60 Hz.
    - Integração com o nó de condição `ConditionEvaluateFreeSpace`.
    - Execução de navegação APF com `ActionPositionForPass` consumindo o `free_space_target`.

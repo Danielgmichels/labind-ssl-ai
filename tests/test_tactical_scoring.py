@@ -17,7 +17,9 @@ from strategy.shot_scoring import get_best_shot_decision, _calc_progression as c
 from strategy.pass_scoring import get_best_pass_decision, _calc_progression as calc_pass_progression
 from strategy.space_scoring import get_best_free_space_decision
 from strategy.Maestro import maestro_distribui_papeis
-from behavior_tree.conditions import ConditionEvaluateShot, ConditionEvaluatePass, ConditionEvaluateFreeSpace
+from behavior_tree.conditions import (
+    ConditionEvaluateShot, ConditionEvaluatePass, ConditionEvaluateFreeSpace, ConditionIsPassArriving
+)
 from behavior_tree.actions import ActionGoToBall, ActionPassBall, ActionPositionForPass
 from behavior_tree.core import NodeState
 import time
@@ -253,6 +255,74 @@ class TestPassScoring(unittest.TestCase):
             last_pass_time=time.time(), pass_target_robot=2, last_passer_id=1
         )
         self.assertEqual(papeis_com_passe[2], "ATACANTE")
+
+    def test_tight_marking_vetoes_receiver(self):
+        # Coloca oponente colado (30cm) no receptor 2 (-3.5, 1.5)
+        opp = self.world.get_robot(0, is_opponent=True)
+        opp.x = -3.5
+        opp.y = 1.2 # Distância de 0.30m (<= 0.35m)
+        opp.visible = True
+
+        decision = get_best_pass_decision(self.world, self.bb, 1)
+        self.assertIsNotNone(decision.best_candidate)
+        # Receptor 2 deve ser vetado e o passe direcionado ao receptor 3
+        self.assertEqual(decision.best_target_robot, 3)
+
+        cand2 = next(c for c in decision.all_candidates if c.receiver_id == 2)
+        self.assertEqual(cand2.score, 0.0)
+        self.assertIn("marcação colada", cand2.reason)
+
+    def test_opponent_near_receiver_blocking_line_rejected(self):
+        # Coloca oponente a 20cm da linha de passe bem próximo do receptor 3 (-3.5, -1.5)
+        # Passador em (-2.0, 0.0), segmento dx = -1.5, dy = -1.5
+        opp = self.world.get_robot(0, is_opponent=True)
+        opp.x = -3.35 # t ~ 0.90
+        opp.y = -1.35
+        opp.visible = True
+
+        decision = get_best_pass_decision(self.world, self.bb, 1)
+        self.assertIsNotNone(decision.best_candidate)
+        self.assertEqual(decision.best_target_robot, 2)
+
+    def test_pass_arriving_extended_range(self):
+        # Receptor em (-3.5, 1.5). Bola em (0.5, 1.5) viajando a 2.5 m/s em direção ao receptor (-X)
+        self.bb.my_pos = type('RobotMock', (), {
+            'id': 2, 'yaw': 0.0,
+            'pos': type('Pos', (), {'x': -3.5, 'y': 1.5})()
+        })()
+        self.bb.my_id = 2
+        self.bb.pass_in_progress_target = 2
+        self.bb.ball_pos = type('Ball', (), {'x': 0.5, 'y': 1.5})()
+        self.bb.ball_vel_x = -2.5
+        self.bb.ball_vel_y = 0.0
+
+        cond = ConditionIsPassArriving()
+        # Distância é 4.0 metros (> 3.0m anterior, dentro do novo limite de 5.5m)
+        status = cond.tick(self.bb)
+        self.assertEqual(status, NodeState.SUCCESS)
+
+    def test_goto_ball_active_dribbler_on_pass_reception(self):
+        # Simula robô receptor se tornando Atacante durante passe em andamento
+        self.bb.my_pos = type('RobotMock', (), {
+            'id': 2, 'yaw': 0.0,
+            'pos': type('Pos', (), {'x': -3.5, 'y': 1.5})()
+        })()
+        self.bb.my_id = 2
+        self.bb.pass_in_progress_target = 2
+        self.bb.last_pass_time = time.time()
+        self.bb.ball_pos = self.world.ball
+
+        # Mock na função send_command para verificar dribbler_speed
+        last_sent = {}
+        def mock_send_command(**kwargs):
+            last_sent.update(kwargs)
+
+        self.bb.action.send_command = mock_send_command
+        goto_ball = ActionGoToBall()
+        goto_ball.tick(self.bb)
+
+        # Driblador deve estar ativo a 1500 RPM para recepção limpa
+        self.assertEqual(last_sent.get('dribbler_speed'), 1500.0)
 
 
 class TestFreeSpacePositioning(unittest.TestCase):
