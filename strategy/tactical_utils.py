@@ -50,18 +50,18 @@ TACTICAL_CONFIG = {
         }
     },
     "FREE_SPACE": {
-        "grid_resolution": 0.50,   # Resolução da grade espacial (m)
-        "min_score": 0.35,         # Limiar mínimo para aprovação de ponto
+        "grid_resolution": 0.30,   # Resolução da grade espacial (m)
+        "min_score": 0.45,         # Limiar mínimo para aprovação de ponto (mais crítico)
         "stability_bonus": 0.15,   # Bônus para o ponto atual (evita oscilações)
         "switch_margin": 0.05,     # Margem necessária para trocar de ponto
-        "safe_margin": 0.35,       # Margem livre de adversários (m)
+        "safe_margin": 0.45,       # Margem livre de bloqueadores na linha de passe (m)
         "collision_radius": 0.18,  # Raio de bloqueio físico na linha de passe (m)
         "weights": {
             "space": 0.25,
-            "pass_line": 0.25,
+            "pass_line": 0.30,      # Prioridade máxima para linha de passe desimpedida
             "support": 0.15,
             "progression": 0.15,
-            "defensive_cover": 0.10,
+            "defensive_cover": 0.05, # Não retém excessivamente os apoios de ataque
             "safety": 0.10
         }
     },

@@ -996,30 +996,31 @@ Os apoios esquerdo e direito possuem posições laterais distintas e agora opera
 
 ### 25.1 Free-Space Positioning Engine [IMPLEMENTADO]
 
-Em vez de se fixarem rigidamente em coordenadas estáticas ($y = \pm 2.5\text{ m}, x = \text{gol} - 2.5\text{ m}$), os robôs de apoio avaliam uma grade espacial de candidatos na zona ofensiva e intermediária através do motor multi-critério:
+Em vez de se fixarem rigidamente em coordenadas estáticas ($y = \pm 2.5\text{ m}, x = \text{gol} - 2.5\text{ m}$), os robôs de apoio avaliam uma grade espacial de candidatos ($grid\_resolution = 0.30\text{ m}$) na zona ofensiva e intermediária através do motor multi-critério:
 
 ```text
 Score_posicao =
     0.25 * space_score
-  + 0.25 * pass_line_score
+  + 0.30 * pass_line_score
   + 0.15 * support_score
   + 0.15 * progression_score
-  + 0.10 * defensive_cover_score
+  + 0.05 * defensive_cover_score
   + 0.10 * safety_score
 ```
 
 #### Componentes de Avaliação:
-1. **Espaço Livre (`space_score`, peso 0.25):** Distância ao adversário mais próximo, recompensando regiões desmarcadas e isoladas da defesa.
-2. **Linha de Passe (`pass_line_score`, peso 0.25):** Raycast da bola até o candidato. Se a reta contiver adversários a menos de $0.18\text{m}$, o score cai para 0.0 (linha bloqueada).
+1. **Espaço Livre (`space_score`, peso 0.25):** Distância ao adversário mais próximo, recompensando regiões desmarcadas e isoladas da defesa, além de penalizar aglomeração de robôs aliados no mesmo ponto ($< 0.60\text{ m}$). Se o ponto estiver marcado de perto por adversário ($\le 0.40\text{ m}$), a posição é **anulada (`score = 0.0`)**.
+2. **Linha de Passe (`pass_line_score`, peso 0.30) — Regra Rígida:** Raycast da bola até o candidato considerando todos os obstáculos (adversários e companheiros de equipe). Se a reta contiver obstáculo a menos de `collision_radius = 0.18 m`, `pass_line_score = 0.0` e o candidato é **imediatamente invalidado (`score = 0.0`)**, eliminando opções na sombra do marcador. A margem segura livre de interceptação é de `safe_margin = 0.45 m`.
 3. **Distância de Suporte (`support_score`, peso 0.15):** Distância ideal em relação ao portador da bola (faixa ideal de 1.8m a 3.5m).
 4. **Progressão (`progression_score`, peso 0.15):** Proximidade longitudinal à meta adversária.
-5. **Cobertura Defensiva (`defensive_cover_score`, peso 0.10):** Posicionamento que assegura recomposição rápida em caso de perda de posse.
+5. **Cobertura Defensiva (`defensive_cover_score`, peso 0.05):** Posicionamento equilibrado que favorece infiltrações agressivas de apoio (até 2.0m à frente da bola com nota plena 1.00), sem reter excessivamente o avanço da equipe.
 6. **Segurança (`safety_score`, peso 0.10):** Distância segura das linhas laterais do campo e áreas de penalidade.
 
 #### Histerese e Estabilidade:
 Para evitar oscilações a 60 Hz na escolha de posição:
 - A coordenada candidata correspondente ao alvo atual recebe um bônus de estabilidade (`stability_bonus = 0.15`).
 - Uma nova posição só substitui o alvo atual se superar sua pontuação por uma margem mínima (`switch_margin = 0.05`).
+- Apenas candidatos com pontuação consolidada acima de `min_score = 0.45` são homologados para navegação.
 
 O ponto vencedor é salvo em `blackboard.free_space_target` e consumido diretamente pela `ActionPositionForPass`, que utiliza o APF para navegar até o ponto enquanto mantém o robô orientado para a bola com o driblador a 1500 RPM. Caso a condição falhe, o sistema utiliza o posicionamento lateral clássico como fallback seguro.
 

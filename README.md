@@ -101,7 +101,7 @@ A ideia central é separar responsabilidades:
 *   **🎯 Tactical Scoring Engine (Decisão Tática por Pontuação Multi-Critério):**
     *   **Shot Scoring:** Avaliação geométrica contínua da meta inimiga, ponderando abertura das traves, alinhamento angular, avanço territorial e bloqueio físico por obstáculos/defensores.
     *   **Pass Scoring & Sincronia Coletiva:** Seleção ótima de companheiros livres para passe, avaliando progressão ofensiva, ângulo de recepção, risco de interceptação e densidade adversária. Inclui transferência dinâmica de posse com a bola em trânsito e *pass lockout* anti-colisão.
-    *   **Free-Space Positioning:** Posicionamento adaptativo sem bola por meio de varredura em grade espacial ($0.50\text{ m}$), mantendo os apoios (alas) constantemente desmarcados em linhas de passe limpas.
+    *   **Free-Space Positioning:** Posicionamento adaptativo sem bola por meio de varredura em grade espacial ($0.30\text{ m}$), mantendo os apoios (alas) constantemente desmarcados em linhas de passe limpas.
 *   **🧲 Navegação por APF Avançado:** Uso de Campos Potenciais Artificiais com "bolha de segurança" dinâmica e repulsão diferenciada para robôs e paredes, garantindo desvios suaves e eficientes.
 *   **🛡️ Goleiro Inteligente:** Posicionamento preditivo para interceptar chutes e lógica de "fechar o ângulo" baseada na bisseção do ângulo entre a bola e as traves.
 *   **👁️ Visualização com Groot:** Geração automática de arquivos XML compatíveis com o **Groot**, o editor visual padrão da indústria para Behavior Trees, permitindo depuração e design de táticas de forma gráfica.

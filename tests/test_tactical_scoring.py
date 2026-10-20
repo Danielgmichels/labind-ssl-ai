@@ -329,6 +329,54 @@ class TestFreeSpacePositioning(unittest.TestCase):
         status = action.tick(self.bb)
         self.assertEqual(status, NodeState.RUNNING)
 
+    def test_free_space_hard_blocks_candidate(self):
+        # Cria um candidato forçadamente na linha de um adversário
+        from strategy.space_scoring import evaluate_position
+        from strategy.tactical_utils import PositionCandidate
+        
+        opp = self.world.get_robot(0, is_opponent=True)
+        opp.x = -2.5
+        opp.y = 0.5
+        opp.visible = True
+
+        candidate = PositionCandidate(target_point=(-3.0, 1.0))
+        shared_data = {
+            'ball_pos': (-2.0, 0.0),
+            'goal_x': -6.0,
+            'opponents': [(-2.5, 0.5)],
+            'teammates': [],
+            'pass_obstacles': [(-2.5, 0.5)],
+            'robot_id': 2
+        }
+        evaluate_position(candidate, shared_data)
+        self.assertEqual(candidate.score, 0.0)
+        self.assertIn("Linha de passe bloqueada", candidate.reason)
+
+    def test_free_space_teammate_blocks_pass_line(self):
+        # Coloca companheiro ID 3 no meio da linha para uma certa região
+        mate = self.world.get_robot(3, is_opponent=False)
+        mate.x = -2.75
+        mate.y = 0.75
+        mate.visible = True
+
+        decision = get_best_free_space_decision(self.world, self.bb, 2, side_y=1.5)
+        self.assertIsNotNone(decision.best_candidate)
+        # Deve escolher uma posição cuja linha de passe não bata no companheiro
+        self.assertGreater(decision.best_candidate.pass_line_score, 0.0)
+
+    def test_free_space_avoids_clumping_with_teammates(self):
+        # Se um companheiro já estiver na posição (-4.8, 1.5)
+        mate = self.world.get_robot(3, is_opponent=False)
+        mate.x = -4.8
+        mate.y = 1.5
+        mate.visible = True
+
+        decision = get_best_free_space_decision(self.world, self.bb, 2, side_y=1.5)
+        self.assertIsNotNone(decision.best_candidate)
+        # O melhor alvo não deve ser exatamente o mesmo do companheiro
+        self.assertNotEqual(decision.best_target_point, (-4.8, 1.5))
+
 
 if __name__ == "__main__":
     unittest.main()
+
