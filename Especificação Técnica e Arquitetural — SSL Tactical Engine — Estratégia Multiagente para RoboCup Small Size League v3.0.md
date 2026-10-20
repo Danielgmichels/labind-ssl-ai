@@ -2440,3 +2440,65 @@ O **controlador converte vetores de navegação em comandos cinemáticos de moto
 O **ActionClient transmite os comandos em tempo real ao simulador/robôs físicos**.
 
 Essa separação modular constitui a base arquitetural do SSL Tactical Engine.
+
+---
+
+# 73. Diretrizes de Governança, Controle de Versão e Git [PADRÃO OBRIGATÓRIO]
+
+Para assegurar consistência entre desenvolvedores humanos, novas sessões de IA e conformidade com os padrões internacionais da RoboCup Small Size League (SSL), o repositório adota **Inglês** como idioma padrão estrito para controle de versão (branches e mensagens de commit).
+
+### 73.1 Padrão de Nomenclatura de Branches
+
+Toda branch criada deve seguir rigorosamente a sintaxe:
+
+$$\text{tipo}/\text{descricao-em-kebab-case}$$
+
+1. **Tipos Válidos:**
+   - `feat/`: Novas funcionalidades táticas, nós de Behavior Tree, motores de pontuação ou controle.
+   - `fix/`: Correções de bugs, ajustes de tolerância ou resolução de travamentos.
+   - `refactor/`: Reestruturação ou modularização de código sem alteração no comportamento tático.
+   - `test/`: Criação ou ampliação de suítes de testes unitários ou ferramentas de validação.
+   - `docs/`: Alterações na documentação, diagramas ou especificações arquiteturais.
+   - `chore/`: Ajustes de dependências, contêiner Docker, `.gitignore` ou scripts de automação.
+
+2. **Regras de Formatação:**
+   - Apenas caracteres minúsculos em inglês com palavras separadas por hífen (`kebab-case`).
+   - Proibido prefixo redundante (ex.: usar `test/apf-filter`, nunca `test/teste-filtro`).
+   - Exemplos oficiais:
+     - `feat/pass-refinements`
+     - `feat/ball-shielding`
+     - `feat/free-space-positioning`
+     - `fix/dribbler-lockup`
+     - `refactor/main-modules`
+     - `test/shielding-scenarios`
+
+### 73.2 Padrão de Mensagens de Commit (Conventional Commits com Escopo)
+
+As mensagens de commit devem seguir o formato internacional **Conventional Commits**:
+
+$$\text{type}(\text{scope}): \text{short description in English}$$
+
+1. **Escopos Reconhecidos:**
+   - `(tactics)`: Behavior Trees, Maestro, papéis táticos e transições de estado.
+   - `(scoring)`: Motores de Shot Scoring, Pass Scoring ou Free-Space Positioning.
+   - `(control)`: APF, controladores proporcionais, velocidades e desacoplamento angular.
+   - `(world)`: WorldModel, representação de bola e robôs, filtros EMA e percepção.
+   - `(bt)`: Ações e condições genéricas da Behavior Tree.
+   - `(docs)`: Especificações técnicas, README e diagramas XML/Groot.
+
+2. **Diretrizes Gramaticais:**
+   - Verbo inicial no imperativo/presente em inglês (`add`, `refine`, `fix`, `update`, `implement`).
+   - Primeira letra minúscula após o escopo; sem ponto final no título.
+   - Limite máximo de 72 caracteres no título.
+   - Exemplos oficiais:
+     - `feat(scoring): refine pass scoring with strict blocking and tight-marking veto`
+     - `feat(control): limit pass kick speed to 3.5 m/s for controlled reception`
+     - `fix(bt): expand pass arriving detection range to 5.5m in ConditionIsPassArriving`
+     - `test(scoring): add unit tests for close-marking rejection`
+     - `docs(spec): document git governance and repository conventions in v3.3`
+
+### 73.3 Regra de Ouro para Agentes de IA e Novos Chats
+
+Qualquer modelo de IA ou desenvolvedor que inicie tarefas neste repositório **deve** adotar essas convenções:
+- Criar branches e registrar commits exclusivamente em inglês conforme as seções 73.1 e 73.2.
+- Garantir que a suíte de testes (`python3 -m unittest discover tests`) permaneça 100% aprovada antes de qualquer submissão.

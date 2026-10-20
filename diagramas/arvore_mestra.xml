@@ -79,7 +79,7 @@
               <Sequence>
                 <Condition ID="ConditionIsNearBall"/>
                 <Condition ID="ConditionIsInShootingZone"/>
-                <Action ID="ActionFindShootingAngle" max_duration="1.5"/>
+                <Action ID="ActionFindShootingAngle" max_duration="0.8"/>
               </Sequence>
               <Sequence>
                 <Condition ID="ConditionIsNearBall"/>

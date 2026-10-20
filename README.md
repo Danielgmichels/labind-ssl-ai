@@ -253,9 +253,11 @@ labind-ssl-ai/
 ├── tests/
 │   ├── __init__.py
 │   ├── test_tactical_scoring.py
-│   │   └── Testes de Shot, Pass e Free-Space Scoring (19 testes)
-│   └── test_shielding.py
-│       └── Testes de Body Shielding, Desacoplamento APF e Divisão A (10 testes)
+│   │   └── Testes de Shot, Pass e Free-Space Scoring (26 testes)
+│   ├── test_shielding.py
+│   │   └── Testes de Body Shielding, Desacoplamento APF e Divisão A (10 testes)
+│   └── visualize_space_scoring.py
+│       └── Visualizador 2D ASCII da grade espacial (Heatmap)
 │
 ├── proto_msg/
 │   └── Mensagens geradas a partir dos arquivos Protobuf
@@ -347,6 +349,27 @@ Isso permite que a equipe continue funcionando quando:
 - a equipe precisa recompor;
 - outro robô passa a ser mais adequado para determinada função.
 
+
+---
+
+## 🧭 Governança de Git e Padrões de Desenvolvimento
+
+Para manter o repositório consistente, profissional e alinhado aos padrões da **RoboCup Small Size League**, o projeto adota **Inglês** como idioma obrigatório para branches e commits:
+
+### 1. Nomenclatura de Branches
+Formato: `<tipo>/<descricao-kebab-case>`
+- `feat/`: Novas funcionalidades (ex.: `feat/pass-refinements`, `feat/ball-shielding`)
+- `fix/`: Correções de bugs ou física (ex.: `fix/dribbler-lockup`)
+- `refactor/`: Refatorações estruturais (ex.: `refactor/main-modules`)
+- `test/`: Criação ou expansão de testes (ex.: `test/tactical-scoring`)
+- `docs/`: Documentação e especificações (ex.: `docs/architecture-v3`)
+
+### 2. Mensagens de Commit (Conventional Commits)
+Formato: `<type>(<scope>): <description>`
+- **Tipos:** `feat`, `fix`, `refactor`, `test`, `docs`, `chore`
+- **Escopos:** `(tactics)`, `(scoring)`, `(control)`, `(world)`, `(bt)`, `(docs)`
+- **Regras:** Verbo no imperativo em inglês, minúsculas, sem ponto final.
+- *Exemplo:* `feat(scoring): refine pass scoring with strict blocking and tight-marking veto`
 
 ---
 
