@@ -20,7 +20,7 @@ TACTICAL_CONFIG = {
         }
     },
     "PASS": {
-        "min_score": 0.55,         # Limiar mínimo aceitável para autorizar o passe (mais crítico)
+        "min_score": 0.50,         # Limiar mínimo aceitável para autorizar o passe (mais crítico)
         "min_distance": 0.70,      # Distância mínima viável (m)
         "max_distance": 6.00,      # Distância máxima viável (m)
         "collision_radius": 0.20,  # Raio de bloqueio físico na linha de passe (m)

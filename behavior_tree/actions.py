@@ -508,7 +508,7 @@ class ActionPassBall(Node):
             # Calcula a distância até o ponto de encontro para definir a força
             dist_passe = math.hypot(alvo_x - blackboard.my_pos.pos.x, alvo_y - blackboard.my_pos.pos.y)
             # Potência calibrada para passe controlado (2.2 a 3.5 m/s) para amortecimento e recepção firme
-            velocidade_chute = max(2.2, min(1.8 + dist_passe * 0.45, 3.5))
+            velocidade_chute = max(2.2, min(1.8 + dist_passe * 0.55, 5.5))
             
             # FREIA O ROBÔ: Garante que a bola bata limpa no chutador e não nas rodas
             vf = 0.0 
