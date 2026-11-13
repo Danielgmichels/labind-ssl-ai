@@ -4,8 +4,8 @@
 **Projeto:** Motor de Estratégia e Inteligência Artificial para RoboCup Small Size League  
 **Laboratório:** LabIND / UDESC  
 **Equipe:** Roboteam  
-**Versão da especificação:** 3.2 (Atualizada com Body Shielding, Desacoplamento Angular no APF e Salvaguardas Regulamentares SSL Divisão A)  
-**Data:** Outubro de 2026
+**Versão da especificação:** 3.3 (Atualizada com Pass Scoring Estrito, Calibração de Potência e Recepção, Body Shielding, Desacoplamento Angular no APF e Diretrizes de Governança Git)  
+**Data:** Novembro de 2026
 
 ---
 
@@ -911,7 +911,7 @@ Score_passe =
 6. **Distância Operacional (`distance_score`, peso 0.05):** Faixa ideal entre 1.5m e 3.5m, penalizando passes extremos (< 1.0m ou > 5.0m).
 7. **Densidade de Oponentes (`density_score`, peso 0.05):** Contagem de oponentes em um raio de 1.20m em torno do receptor.
 
-Apenas candidatos com score rigoroso $\ge 0.55$ são homologados. A condição `ConditionEvaluatePass` suporta o modo `only_forward=True` (exige $\text{progression\_score} \ge 0.50$) e `only_forward=False` (permite recuos).
+Apenas candidatos com score rigoroso $\ge 0.50$ são homologados. A condição `ConditionEvaluatePass` suporta o modo `only_forward=True` (exige $\text{progression\_score} \ge 0.50$) e `only_forward=False` (permite recuos).
 
 ---
 
@@ -921,9 +921,9 @@ A execução do passe pela `ActionPassBall` e a recepção pela `ActionIntercept
 
 1. **Força Calibrada de Chute (Potência Controlada):**
    A potência do chute é calculada por:
-   $$kick\_speed = \max(2.2, \min(1.8 + distancia \times 0.45, 3.5))$$
+   $$kick\_speed = \max(2.2, \min(1.8 + distancia \times 0.55, 5.5))$$
    - Garante força mínima de $2.2\text{ m/s}$ para que a bola vença o atrito com o piso/carpete sem morrer prematuramente.
-   - Limita a velocidade máxima a $3.5\text{ m/s}$ (em vez do limite brusco de $6.0\text{ m/s}$), proporcionando uma bola controlada que o rolete frontal do receptor consegue amortecer e segurar sem ricochetear.
+   - Ajusta dinamicamente a força proporcional à distância com teto seguro em $5.5\text{ m/s}$, proporcionando uma bola firme para distâncias longas enquanto viabiliza amortecimento e retenção pelo rolete do receptor.
 2. **Alinhamento Angular Ágil (Redução da Demora do Atacante):**
    Ao atingir tolerância angular calibrada:
    ```text
@@ -2340,6 +2340,12 @@ Esta versão consolida os seguintes pilares fundamentais no projeto:
    - Desacoplamento da velocidade angular (`vw`) no APF via parâmetro `target_yaw` no `ProportionalController.calculate_velocity`.
    - Evasão tangencial em direção a quadrantes seguros e livres do campo.
    - Conformidade estrita com o regulamento da SSL Divisão A através de odômetro de drible de 1 metro ($0.80\text{ m}$) e temporizador ($1.50\text{ s}$), com reciclagem segura de posse via passe de recuo.
+
+4. **Pass Scoring Estrito e Sincronia de Recepção Refinada (v3.3):**
+   - Regras rígidas de veto para trajetórias bloqueadas (`collision_radius = 0.20m`) e companheiros sob marcação colada ($\le 0.35\text{m}$).
+   - Potência calibrada de passe proporcional à distância com teto seguro em $5.5\text{ m/s}$ e disparo ágil com tolerância angular de $0.05\text{ rad}$.
+   - Recepção de passe estendida para alcance de até $5.5\text{ m}$ e acionamento preditivo com driblador ativo a 1500 RPM na interceptação e na aproximação.
+   - Formalização de governança de Git com branches e commits padronizados em inglês (Conventional Commits com escopos).
 
 ---
 
