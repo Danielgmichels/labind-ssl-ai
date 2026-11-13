@@ -4,6 +4,7 @@ from .core import Node, NodeState
 from strategy.shot_scoring import get_best_shot_decision
 from strategy.pass_scoring import get_best_pass_decision
 from strategy.space_scoring import get_best_free_space_decision
+from strategy.tactical_utils import TACTICAL_CONFIG
 
 # ==========================================
 # NÓS DE CONDIÇÃO (O Juiz)
@@ -143,15 +144,16 @@ class ConditionIsPassArriving(Node):
             return NodeState.FAILURE
             
         speed = math.hypot(blackboard.ball_vel_x, blackboard.ball_vel_y)
-        if speed < 0.6: # Bola lenta demais, compensa dominar normal
+        if speed < 0.5: # Bola lenta demais, compensa dominar normal
             return NodeState.FAILURE
             
-        # Vetor do robô apontando para a bola
+        # Vetor da bola apontando para o robô
         dx_robo = blackboard.my_pos.pos.x - blackboard.ball_pos.x
         dy_robo = blackboard.my_pos.pos.y - blackboard.ball_pos.y
         dist_robo = math.hypot(dx_robo, dy_robo)
         
-        if dist_robo == 0 or dist_robo > 3.0: 
+        # Alcance estendido para cobrir toda a faixa operacional de passe (até 5.5m)
+        if dist_robo == 0 or dist_robo > 5.5: 
             return NodeState.FAILURE # Longe demais da jogada
             
         # Produto Escalar (Dot Product) para saber se a bola vem na nossa direção
@@ -163,8 +165,12 @@ class ConditionIsPassArriving(Node):
         
         dot_product = (nx_bola * nx_robo) + (ny_bola * ny_robo)
         
-        # Se for > 0.7, a trajetória da bola aponta diretamente (cone de ~45º) para o robô!
-        if dot_product > 0.7: 
+        # Se for o receptor designado pelo passador/Maestro, tolerância estendida (min_dot = 0.40)
+        # para reagir prontamente mesmo durante a aceleração inicial do disparo
+        is_target = getattr(blackboard, 'pass_in_progress_target', None) == blackboard.my_id
+        min_dot = 0.40 if is_target else 0.65
+
+        if dot_product > min_dot: 
             return NodeState.SUCCESS
             
         return NodeState.FAILURE
@@ -431,4 +437,48 @@ class ConditionEvaluateFreeSpace(Node):
             blackboard.free_space_target = decision.best_target_point
             return NodeState.SUCCESS
 
+        return NodeState.FAILURE
+
+
+class ConditionIsUnderPressure(Node):
+    """
+    Retorna SUCCESS se houver um adversário dentro do raio de perigo (danger_radius),
+    ameaçando roubar a posse de bola.
+    Salva o adversário mais próximo em blackboard.threatening_enemy.
+    """
+    def __init__(self, danger_radius=None):
+        super().__init__()
+        self.danger_radius = danger_radius
+
+    def tick(self, blackboard):
+        if blackboard.my_pos is None:
+            return NodeState.FAILURE
+
+        threshold = self.danger_radius
+        if threshold is None:
+            threshold = TACTICAL_CONFIG.get("SHIELD", {}).get("danger_radius", 0.75)
+
+        closest_enemy = None
+        min_dist = float('inf')
+
+        enemies = getattr(blackboard, 'enemies', [])
+        for obs in enemies:
+            # Ignora posições nulas/inválidas do simulador
+            if abs(obs.pos.x) < 0.001 and abs(obs.pos.y) < 0.001:
+                continue
+
+            dist = math.hypot(obs.pos.x - blackboard.my_pos.pos.x,
+                              obs.pos.y - blackboard.my_pos.pos.y)
+
+            if dist < threshold and dist < min_dist:
+                min_dist = dist
+                closest_enemy = obs
+
+        if closest_enemy is not None:
+            blackboard.threatening_enemy = closest_enemy
+            blackboard.threat_distance = min_dist
+            return NodeState.SUCCESS
+
+        blackboard.threatening_enemy = None
+        blackboard.threat_distance = None
         return NodeState.FAILURE

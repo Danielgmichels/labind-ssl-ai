@@ -101,7 +101,7 @@ A ideia central é separar responsabilidades:
 *   **🎯 Tactical Scoring Engine (Decisão Tática por Pontuação Multi-Critério):**
     *   **Shot Scoring:** Avaliação geométrica contínua da meta inimiga, ponderando abertura das traves, alinhamento angular, avanço territorial e bloqueio físico por obstáculos/defensores.
     *   **Pass Scoring & Sincronia Coletiva:** Seleção ótima de companheiros livres para passe, avaliando progressão ofensiva, ângulo de recepção, risco de interceptação e densidade adversária. Inclui transferência dinâmica de posse com a bola em trânsito e *pass lockout* anti-colisão.
-    *   **Free-Space Positioning:** Posicionamento adaptativo sem bola por meio de varredura em grade espacial ($0.50\text{ m}$), mantendo os apoios (alas) constantemente desmarcados em linhas de passe limpas.
+    *   **Free-Space Positioning:** Posicionamento adaptativo sem bola por meio de varredura em grade espacial ($0.30\text{ m}$), mantendo os apoios (alas) constantemente desmarcados em linhas de passe limpas.
 *   **🧲 Navegação por APF Avançado:** Uso de Campos Potenciais Artificiais com "bolha de segurança" dinâmica e repulsão diferenciada para robôs e paredes, garantindo desvios suaves e eficientes.
 *   **🛡️ Goleiro Inteligente:** Posicionamento preditivo para interceptar chutes e lógica de "fechar o ângulo" baseada na bisseção do ângulo entre a bola e as traves.
 *   **👁️ Visualização com Groot:** Geração automática de arquivos XML compatíveis com o **Groot**, o editor visual padrão da indústria para Behavior Trees, permitindo depuração e design de táticas de forma gráfica.
@@ -252,8 +252,12 @@ labind-ssl-ai/
 │
 ├── tests/
 │   ├── __init__.py
-│   └── test_tactical_scoring.py
-│       └── Suíte completa de testes automatizados (19 testes)
+│   ├── test_tactical_scoring.py
+│   │   └── Testes de Shot, Pass e Free-Space Scoring (26 testes)
+│   ├── test_shielding.py
+│   │   └── Testes de Body Shielding, Desacoplamento APF e Divisão A (10 testes)
+│   └── visualize_space_scoring.py
+│       └── Visualizador 2D ASCII da grade espacial (Heatmap)
 │
 ├── proto_msg/
 │   └── Mensagens geradas a partir dos arquivos Protobuf
@@ -345,6 +349,27 @@ Isso permite que a equipe continue funcionando quando:
 - a equipe precisa recompor;
 - outro robô passa a ser mais adequado para determinada função.
 
+
+---
+
+## 🧭 Governança de Git e Padrões de Desenvolvimento
+
+Para manter o repositório consistente, profissional e alinhado aos padrões da **RoboCup Small Size League**, o projeto adota **Inglês** como idioma obrigatório para branches e commits:
+
+### 1. Nomenclatura de Branches
+Formato: `<tipo>/<descricao-kebab-case>`
+- `feat/`: Novas funcionalidades (ex.: `feat/pass-refinements`, `feat/ball-shielding`)
+- `fix/`: Correções de bugs ou física (ex.: `fix/dribbler-lockup`)
+- `refactor/`: Refatorações estruturais (ex.: `refactor/main-modules`)
+- `test/`: Criação ou expansão de testes (ex.: `test/tactical-scoring`)
+- `docs/`: Documentação e especificações (ex.: `docs/architecture-v3`)
+
+### 2. Mensagens de Commit (Conventional Commits)
+Formato: `<type>(<scope>): <description>`
+- **Tipos:** `feat`, `fix`, `refactor`, `test`, `docs`, `chore`
+- **Escopos:** `(tactics)`, `(scoring)`, `(control)`, `(world)`, `(bt)`, `(docs)`
+- **Regras:** Verbo no imperativo em inglês, minúsculas, sem ponto final.
+- *Exemplo:* `feat(scoring): refine pass scoring with strict blocking and tight-marking veto`
 
 ---
 

@@ -20,20 +20,20 @@ TACTICAL_CONFIG = {
         }
     },
     "PASS": {
-        "min_score": 0.50,         # Limiar mínimo aceitável para autorizar o passe
+        "min_score": 0.50,         # Limiar mínimo aceitável para autorizar o passe (mais crítico)
         "min_distance": 0.70,      # Distância mínima viável (m)
         "max_distance": 6.00,      # Distância máxima viável (m)
-        "collision_radius": 0.18,  # Raio de bloqueio físico na linha de passe (m)
+        "collision_radius": 0.20,  # Raio de bloqueio físico na linha de passe (m)
         "safe_margin": 0.50,       # Margem segura livre de interceptação (m)
         "density_radius": 1.20,    # Raio de busca de adversários em volta do receptor (m)
         "weights": {
-            "progression": 0.25,
-            "space": 0.15,
-            "reception_angle": 0.15,
-            "distance": 0.10,
-            "support": 0.15,
-            "interception": 0.15,
-            "density": 0.05
+            "interception": 0.30,  # Prioridade máxima: linha de passe desimpedida
+            "space": 0.25,         # Receptor livre de marcação direta
+            "progression": 0.20,   # Ganho vertical em direção ao ataque
+            "reception_angle": 0.10,# Alinhamento frontal para domínio
+            "support": 0.05,       # Preferência tática do papel (peso reduzido para não mascarar marcação)
+            "distance": 0.05,      # Faixa operacional confortável
+            "density": 0.05        # Densidade de oponentes no entorno
         },
         "role_support_scores": {
             "ATACANTE_APOIO_ESQ": 1.00,
@@ -50,20 +50,29 @@ TACTICAL_CONFIG = {
         }
     },
     "FREE_SPACE": {
-        "grid_resolution": 0.50,   # Resolução da grade espacial (m)
-        "min_score": 0.35,         # Limiar mínimo para aprovação de ponto
+        "grid_resolution": 0.30,   # Resolução da grade espacial (m)
+        "min_score": 0.45,         # Limiar mínimo para aprovação de ponto (mais crítico)
         "stability_bonus": 0.15,   # Bônus para o ponto atual (evita oscilações)
         "switch_margin": 0.05,     # Margem necessária para trocar de ponto
-        "safe_margin": 0.35,       # Margem livre de adversários (m)
+        "safe_margin": 0.45,       # Margem livre de bloqueadores na linha de passe (m)
         "collision_radius": 0.18,  # Raio de bloqueio físico na linha de passe (m)
         "weights": {
             "space": 0.25,
-            "pass_line": 0.25,
+            "pass_line": 0.30,      # Prioridade máxima para linha de passe desimpedida
             "support": 0.15,
             "progression": 0.15,
-            "defensive_cover": 0.10,
+            "defensive_cover": 0.05, # Não retém excessivamente os apoios de ataque
             "safety": 0.10
         }
+    },
+    "SHIELD": {
+        "danger_radius": 0.75,          # Raio de ativação da proteção por aproximação (m)
+        "immediate_threat_radius": 0.50,# Raio de perigo iminente (m)
+        "max_shield_duration": 1.50,    # Tempo limite contínuo sob blindagem antes de forçar passe (s)
+        "max_shield_distance": 0.80,    # Distância máxima de condução contínua (m, regra de 1m SSL Divisão A)
+        "dribbler_speed": 1500.0,       # Rotação do rolete durante a blindagem (RPM)
+        "tangent_distance": 0.60,       # Distância projetada para o waypoint de evasão tangencial (m)
+        "field_margin_y": 2.60          # Limite de segurança no eixo Y para não sair de campo (m)
     }
 }
 

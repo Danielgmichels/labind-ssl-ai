@@ -4,8 +4,8 @@
 **Projeto:** Motor de Estratégia e Inteligência Artificial para RoboCup Small Size League  
 **Laboratório:** LabIND / UDESC  
 **Equipe:** Roboteam  
-**Versão da especificação:** 3.1 (Atualizada com Tactical Scoring — Shot & Pass Engines e Sincronia Multiagente)  
-**Data:** Setembro de 2026
+**Versão da especificação:** 3.2 (Atualizada com Body Shielding, Desacoplamento Angular no APF e Salvaguardas Regulamentares SSL Divisão A)  
+**Data:** Outubro de 2026
 
 ---
 
@@ -762,7 +762,7 @@ Essa prioridade é importante porque uma ação ofensiva nunca deve sobrepor um 
 
 O atacante é o robô com a árvore de decisão mais rica da equipe.
 
-A prioridade ofensiva na versão 3.1 foi reestruturada para garantir agressividade ofensiva e evitar recuos prematuros ou estagnação contra defesas em barreira:
+A prioridade ofensiva consolidada na versão 3.2 integra proteção corporal ativa de bola sob pressão, garantindo agressividade ofensiva máxima e evitando que o robô exponha o rolete para marcadores adversários:
 
 ```text
 1. Receber passe (ConditionIsPassArriving → ActionInterceptPass)
@@ -771,16 +771,18 @@ A prioridade ofensiva na versão 3.1 foi reestruturada para garantir agressivida
          ↓
 3. Passe avançado para frente (ConditionEvaluatePass(only_forward=True) → ActionPassBall)
          ↓
-4. Encontrar ângulo / Strafe lateral (ConditionIsInShootingZone → ActionFindShootingAngle)
+4. Blindagem corporal sob pressão (ConditionIsUnderPressure → ActionShieldBall)
          ↓
-5. Conduzir com drible evasivo (ActionSmartDribble)
+5. Encontrar ângulo / Strafe lateral (ConditionIsInShootingZone → ActionFindShootingAngle)
          ↓
-6. Passe de recuo / Manutenção de posse (ConditionEvaluatePass(only_forward=False) → ActionPassBall)
+6. Conduzir com drible livre (ActionSmartDribble)
          ↓
-7. Buscar bola com Pass Lockout (ActionGoToBall)
+7. Passe de recuo / Manutenção de posse (ConditionEvaluatePass(only_forward=False) → ActionPassBall)
+         ↓
+8. Buscar bola com Pass Lockout (ActionGoToBall)
 ```
 
-Essa estrutura assegura que o atacante primeiro explore todas as possibilidades de finalização ou aceleração da jogada à frente, utilize o drible lateral para tirar barreiras estáticas da frente do gol e, apenas se essas tentativas falharem ou expirarem, opte pelo recuo controlado para girar a posse de bola.
+Essa estrutura assegura que o atacante explore primeiro oportunidades imediatas de gol ou aceleração para frente; caso não haja linha limpa e um adversário feche o cerco para roubar a bola, o robô utiliza o seu próprio chassi para blindar a posse e evadir lateralmente; se a blindagem expirar ou a pressão for aliviada, busca brecha de finalização ou recua a bola com segurança para a linha de trás.
 
 ---
 
@@ -868,60 +870,72 @@ Ao atingir a precisão, o robô freia a translação (`vf = 0.0, vl = 0.0`), lig
 
 ---
 
-# 22. Passe — Pass Scoring Engine [IMPLEMENTADO]
+# 22. Passe — Pass Scoring Engine [IMPLEMENTADO & CALIBRADO]
 
-A seleção de receptores de passe foi modernizada para um **motor de pontuação multi-critério** (`strategy/pass_scoring.py`), substituindo a seleção linear do primeiro companheiro com linha desimpedida.
+A seleção de receptores de passe foi modernizada para um **motor de pontuação multi-critério estrito** (`strategy/pass_scoring.py`), substituindo a seleção linear do primeiro companheiro com linha desimpedida e eliminando aprovações permissivas de passes contestados.
 
 O motor avalia simultaneamente todos os companheiros visíveis e elegíveis (excluindo o próprio passador, o goleiro e robôs fora da faixa de 0.70m a 6.00m).
 
-Cada companheiro é avaliado segundo 7 fatores ponderados:
+Cada companheiro é avaliado segundo 7 fatores ponderados e calibrados:
 
 ```text
 Score_passe =
-    0.25 * progression_score
-  + 0.15 * space_score
-  + 0.15 * reception_angle_score
-  + 0.10 * distance_score
-  + 0.15 * support_score
-  + 0.15 * interception_score
+    0.30 * interception_score
+  + 0.25 * space_score
+  + 0.20 * progression_score
+  + 0.10 * reception_angle_score
+  + 0.05 * support_score
+  + 0.05 * distance_score
   + 0.05 * density_score
 ```
 
-### Componentes de Avaliação:
+### Componentes de Avaliação e Regras Críticas de Veto:
 
-1. **Progressão Longitudinal (`progression_score`, peso 0.25):**
+1. **Linha de Intercepção (`interception_score`, peso 0.30) — Regra Rígida de Bloqueio:**
+   - Projeção ortogonal de todos os adversários e aliados sobre o segmento passador $\rightarrow$ receptor, avaliando todo o trajeto.
+   - Se houver adversário a menos de `collision_radius = 0.20 m`, `interception_score = 0.0` e o candidato é **imediatamente anulado (`score = 0.0`)**, eliminando qualquer risco de perda de posse em trajetórias obstruídas.
+2. **Espaço Livre (`space_score`, peso 0.25) — Regra Rígida de Marcação Colada:**
+   - Distância do receptor ao adversário mais próximo.
+   - Se o receptor estiver marcado de perto ($\le 0.35\text{ m}$ de um rival), `space_score = 0.0` e o passe é **vetado sumariamente (`score = 0.0`)**, impedindo passes forçados em companheiros abafados pela marcação.
+3. **Progressão Longitudinal (`progression_score`, peso 0.20):**
    - Passes para frente ($\Delta_{prog} \ge 0$): nota de 0.50 a 1.00 baseada no ganho de metros em direção ao gol inimigo.
-   - Passes para trás ($\Delta_{prog} < 0$): penalizados proporcionalmente à distância recuada (nota entre 0.00 e 0.30 no campo ofensivo), preservando sua viabilidade como recurso de giro de jogo, mas impedindo que superem jogadas de ataque.
-2. **Espaço Livre (`space_score`, peso 0.15):** Distância do receptor ao adversário mais próximo (raio confortável $\ge 1.5\text{ m}$).
-3. **Ângulo de Recepção (`reception_angle_score`, peso 0.15):** Facilidade angular para o receptor dominar a bola e dar continuidade à jogada em direção ao gol.
-4. **Distância Operacional (`distance_score`, peso 0.10):** Penalização de passes curtos demais (< 1.0m) ou excessivamente longos (> 5.0m), com pico ideal entre 2.0m e 3.5m.
-5. **Função Tática do Receptor (`support_score`, peso 0.15):** Priorização baseada na tabela de papéis:
+   - Passes para trás ($\Delta_{prog} < 0$): penalizados proporcionalmente à distância recuada (nota entre 0.00 e 0.30 no campo ofensivo), preservando sua viabilidade como recurso de giro de jogo quando o receptor estiver em espaço aberto pleno.
+4. **Ângulo de Recepção (`reception_angle_score`, peso 0.10):** Facilidade angular para o receptor dominar a bola e dar continuidade à jogada em direção ao gol.
+5. **Função Tática do Receptor (`support_score`, peso 0.05):** Peso reduzido para mero critério de desempate, assegurando que o nome do papel tático não mascare marcação adversária:
    - `ATACANTE_APOIO_ESQ` / `DIR`: 1.00
    - `MEIA_ARMADOR`: 0.90
    - `LATERAL_ESQUERDO` / `DIREITO`: 0.75
    - `MEIO_CAMPO`: 0.65
    - `VOLANTE`: 0.40
    - `ZAGUEIROS`: 0.15 ~ 0.20
-6. **Linha de Intercepção (`interception_score`, peso 0.15) — Regra Rígida:**
-   - Projeção ortogonal de todos os adversários sobre o segmento passador $\rightarrow$ receptor.
-   - Se houver adversário a menos de `collision_radius = 0.18 m`, `interception_score = 0.0` e o candidato é **anulado**.
+6. **Distância Operacional (`distance_score`, peso 0.05):** Faixa ideal entre 1.5m e 3.5m, penalizando passes extremos (< 1.0m ou > 5.0m).
 7. **Densidade de Oponentes (`density_score`, peso 0.05):** Contagem de oponentes em um raio de 1.20m em torno do receptor.
 
-O melhor candidato com score $\ge 0.50$ é selecionado. A condição `ConditionEvaluatePass` suporta o modo `only_forward=True` (exige $\text{progression\_score} \ge 0.50$) e `only_forward=False` (permite recuos).
+Apenas candidatos com score rigoroso $\ge 0.55$ são homologados. A condição `ConditionEvaluatePass` suporta o modo `only_forward=True` (exige $\text{progression\_score} \ge 0.50$) e `only_forward=False` (permite recuos).
 
 ---
 
 # 23. Potência e Mecânica do Passe
 
-A execução do passe pela `ActionPassBall` segue três princípios mecânicos e de controle fundamentais:
+A execução do passe pela `ActionPassBall` e a recepção pela `ActionInterceptPass` seguem princípios cinemáticos refinados para garantir fluidez e precisão de recepção:
 
-1. **Força Mínima de Chute:**
+1. **Força Calibrada de Chute (Potência Controlada):**
    A potência do chute é calculada por:
-   $$kick\_speed = \max(2.5, \min(distancia \times 2.2, 6.0))$$
-   garantindo que mesmo passes curtos (1.0m) sejam disparados a no mínimo $2.5\text{ m/s}$, impedindo que a bola morra prematuramente pelo atrito com o piso/carpete.
-2. **Desligamento do Driblador na Soltura:**
-   Ao atingir o alinhamento angular ($< 0.02\text{ rad}$), o comando zera a velocidade do motor de drible (`dribbler_speed = 0.0`), permitindo que a bola se desprenda limpa da frente do robô sem atrito reverso ou desaceleração.
-3. **Pass Lockout e Sincronia Temporal:**
+   $$kick\_speed = \max(2.2, \min(1.8 + distancia \times 0.45, 3.5))$$
+   - Garante força mínima de $2.2\text{ m/s}$ para que a bola vença o atrito com o piso/carpete sem morrer prematuramente.
+   - Limita a velocidade máxima a $3.5\text{ m/s}$ (em vez do limite brusco de $6.0\text{ m/s}$), proporcionando uma bola controlada que o rolete frontal do receptor consegue amortecer e segurar sem ricochetear.
+2. **Alinhamento Angular Ágil (Redução da Demora do Atacante):**
+   Ao atingir tolerância angular calibrada:
+   ```text
+   |erro_angular| < 0.05 rad (~2.8 graus)
+   ```
+   o robô autoriza o disparo imediato, eliminando oscilações milimétricas lentas no ponto de giro. Na soltura, zera a rotação e a velocidade do motor de drible (`dribbler_speed = 0.0`), liberando a bola limpa sem atrito reverso.
+3. **Recepção Ativa com Alcance Estendido e Boost de Intercepção:**
+   - A `ConditionIsPassArriving` opera com raio estendido de até $5.5\text{ m}$, detectando prontamente passes longos assim que disparados.
+   - Para o receptor designado (`pass_in_progress_target == my_id`), o cone de sensibilidade opera com tolerância ampliada ($\text{min\_dot} = 0.40$), iniciando a movimentação de intercepção desde os primeiros milissegundos do chute.
+   - A `ActionInterceptPass` aplica um *boost* de velocidade ($v \ge 0.9\text{ m/s}$) caso haja desalinhamento lateral, garantindo que o robô feche o corredor e se coloque à frente da bola a tempo.
+   - A `ActionGoToBall` mantém o rolete a 1500 RPM ativo caso o robô esteja recebendo passe em andamento, impedindo que a bola colida com a lataria desligada.
+4. **Pass Lockout e Sincronia Temporal:**
    No milissegundo do disparo, o passador registra:
    ```python
    blackboard.last_pass_time = time.time()
@@ -933,18 +947,49 @@ A execução do passe pela `ActionPassBall` segue três princípios mecânicos e
 
 ---
 
-# 24. Condução, Drible Evasivo e Busca de Ângulo
+# 24. Condução, Blindagem Ativa de Posse (Body Shielding), Drible e Busca de Ângulo
 
-Quando não há oportunidade limpa de finalização nem passe para frente, o atacante dispõe de dois recursos ativos antes de recorrer ao recuo de bola:
+Quando não há oportunidade limpa de finalização imediata nem passe ofensivo para a frente, o atacante dispõe de recursos de condução, blindagem corporal e busca de espaço antes de recorrer ao recuo da bola:
 
 ### 24.1 Busca de Ângulo Lateral (`ActionFindShootingAngle`)
 - O robô mantém o driblador a 1500 RPM segurando a bola e executa passadas laterais (*strafing* com $v_l = \pm 1.0\text{ m/s}, v_f \approx 0.1\text{ m/s}$) mantendo a orientação apontada para o gol adversário.
 - Objetivo: deslocar-se lateralmente para sair de trás da barreira estática e abrir um corredor de finalização para os cantos da trave.
-- Possui salvaguardas de estabilidade: encerra após 1.5s ou se aproximar das linhas laterais do campo ($|y| > 2.8\text{m}$), retornando `FAILURE` para autorizar outras ações (drible ou passe de recuo).
+- **Temporizador Dinâmico:** Encerra após $0.8\text{ s}$ (calibrado para evitar congelamento da posse) ou se aproximar das linhas laterais ($|y| > 2.8\text{m}$), retornando `FAILURE` para autorizar a árvore a tentar o drible ou passe de recuo.
+- **Salvaguarda de Perigo Frontal Imediato (v3.2):** Se um marcador adversário fechar o cone frontal a menos de $0.60\text{ m}$ ($|\Delta \theta| < 0.8\text{ rad}$), a ação encerra imediatamente com `FAILURE`, impedindo o choque frontal de roletes e transferindo a decisão para a blindagem ou passe.
 
 ### 24.2 Drible Evasivo Frontal (`ActionSmartDribble`)
-- Conduz a bola em direção ao gol adversário.
+- Conduz a bola em direção ao gol adversário em campo aberto.
 - Ao detectar um adversário a menos de 0.8m no seu cone frontal de visão, reduz a velocidade para frente e aplica velocidade lateral evasiva na direção oposta ao obstáculo para contornar a marcação mantendo o controle da posse.
+
+### 24.3 Blindagem Ativa de Posse com o Corpo e Evasão Tangencial (`ActionShieldBall`) [IMPLEMENTADO v3.2]
+A maior causa de travamento mecânico mútuo (*dribbler lockup*) no simulador e em jogos reais ocorre quando o robô portador da bola encara frontalmente um defensor em aproximação, expondo a bola entre os dois sistemas de condução.
+
+Para neutralizar essa vulnerabilidade sem infringir as regras de contato da RoboCup SSL, o sistema implementa a **Blindagem Ativa de Posse**:
+
+1. **Detecção de Pressão (`ConditionIsUnderPressure`):**
+   Varre os adversários no campo. Se qualquer adversário estiver dentro do raio crítico de perigo:
+   $$d_{obs} < \text{danger\_radius} = 0.75\text{ m}$$
+   a condição retorna `SUCCESS`, elegendo o adversário mais próximo como a ameaça ativa (`blackboard.threatening_enemy`).
+
+2. **Geometria de Blindagem (*Shield Angle*):**
+   Calcula o vetor de investida do adversário em relação ao nosso robô:
+   $$\vec{v}_{RE} = \vec{p}_E - \vec{p}_R, \quad \phi_{ameaca} = \text{atan2}(v_{RE.y}, v_{RE.x})$$
+   A orientação do robô é forçada na direção oposta:
+   $$\theta_{shield} = \text{normalizar}(\phi_{ameaca} + \pi)$$
+   Dessa forma, o chassi circular rígido traseiro ($R = 90\text{ mm}$) atua como anteparo físico. Qualquer tentativa de desarme direto do adversário resulta em choque contra a carcaça traseira de nosso robô, o que configura falta do adversário (*Pushing / Crash Against Opponent*) pelas regras da SSL.
+
+3. **Evasão Tangencial Decoplada:**
+   O robô não permanece estático; ele calcula waypoints de escape perpendiculares à ameaça:
+   $$\phi_{tangente} = \phi_{ameaca} \pm \frac{\pi}{2}$$
+   Seleciona o candidato que respeita as margens seguras de campo ($|y| \le 2.60\text{ m}$) e que preserva avanço territorial. A navegação APF calcula a translação $(v_f, v_l)$ para esse waypoint enquanto o controlador de rotação aplica `target_yaw = theta_shield`.
+
+4. **Conformidade com a Regra do Drible de 1 Metro (SSL Divisão A):**
+   A SSL Divisão A proíbe condução contínua de bola por mais de 1 metro sem chute ou liberação. O nó incorpora um **Odômetro de Proteção**:
+   $$\text{dist\_percorrida} > 0.80\text{ m} \quad \text{ou} \quad \text{tempo\_decorrido} > 1.50\text{ s} \implies \text{Retorna } FAILURE$$
+   Ao falhar propositalmente, a árvore de comportamento cai para o passo seguinte: `tentar_passe_recuo` (`ActionPassBall`), realizando a despressurização legal da jogada.
+
+5. **Sinergia Tática com os Apoios:**
+   Ao virar as costas para o adversário que vem do campo ofensivo, o chutador do nosso robô passa a apontar naturalmente para o nosso próprio campo, deixando a bola perfeitamente alinhada para passes de alívio instantâneos em direção ao `MEIA_ARMADOR` ou `VOLANTE` posicionados pelo `space_scoring`.
 
 ---
 
@@ -963,30 +1008,31 @@ Os apoios esquerdo e direito possuem posições laterais distintas e agora opera
 
 ### 25.1 Free-Space Positioning Engine [IMPLEMENTADO]
 
-Em vez de se fixarem rigidamente em coordenadas estáticas ($y = \pm 2.5\text{ m}, x = \text{gol} - 2.5\text{ m}$), os robôs de apoio avaliam uma grade espacial de candidatos na zona ofensiva e intermediária através do motor multi-critério:
+Em vez de se fixarem rigidamente em coordenadas estáticas ($y = \pm 2.5\text{ m}, x = \text{gol} - 2.5\text{ m}$), os robôs de apoio avaliam uma grade espacial de candidatos ($grid\_resolution = 0.30\text{ m}$) na zona ofensiva e intermediária através do motor multi-critério:
 
 ```text
 Score_posicao =
     0.25 * space_score
-  + 0.25 * pass_line_score
+  + 0.30 * pass_line_score
   + 0.15 * support_score
   + 0.15 * progression_score
-  + 0.10 * defensive_cover_score
+  + 0.05 * defensive_cover_score
   + 0.10 * safety_score
 ```
 
 #### Componentes de Avaliação:
-1. **Espaço Livre (`space_score`, peso 0.25):** Distância ao adversário mais próximo, recompensando regiões desmarcadas e isoladas da defesa.
-2. **Linha de Passe (`pass_line_score`, peso 0.25):** Raycast da bola até o candidato. Se a reta contiver adversários a menos de $0.18\text{m}$, o score cai para 0.0 (linha bloqueada).
+1. **Espaço Livre (`space_score`, peso 0.25):** Distância ao adversário mais próximo, recompensando regiões desmarcadas e isoladas da defesa, além de penalizar aglomeração de robôs aliados no mesmo ponto ($< 0.60\text{ m}$). Se o ponto estiver marcado de perto por adversário ($\le 0.40\text{ m}$), a posição é **anulada (`score = 0.0`)**.
+2. **Linha de Passe (`pass_line_score`, peso 0.30) — Regra Rígida:** Raycast da bola até o candidato considerando todos os obstáculos (adversários e companheiros de equipe). Se a reta contiver obstáculo a menos de `collision_radius = 0.18 m`, `pass_line_score = 0.0` e o candidato é **imediatamente invalidado (`score = 0.0`)**, eliminando opções na sombra do marcador. A margem segura livre de interceptação é de `safe_margin = 0.45 m`.
 3. **Distância de Suporte (`support_score`, peso 0.15):** Distância ideal em relação ao portador da bola (faixa ideal de 1.8m a 3.5m).
 4. **Progressão (`progression_score`, peso 0.15):** Proximidade longitudinal à meta adversária.
-5. **Cobertura Defensiva (`defensive_cover_score`, peso 0.10):** Posicionamento que assegura recomposição rápida em caso de perda de posse.
+5. **Cobertura Defensiva (`defensive_cover_score`, peso 0.05):** Posicionamento equilibrado que favorece infiltrações agressivas de apoio (até 2.0m à frente da bola com nota plena 1.00), sem reter excessivamente o avanço da equipe.
 6. **Segurança (`safety_score`, peso 0.10):** Distância segura das linhas laterais do campo e áreas de penalidade.
 
 #### Histerese e Estabilidade:
 Para evitar oscilações a 60 Hz na escolha de posição:
 - A coordenada candidata correspondente ao alvo atual recebe um bônus de estabilidade (`stability_bonus = 0.15`).
 - Uma nova posição só substitui o alvo atual se superar sua pontuação por uma margem mínima (`switch_margin = 0.05`).
+- Apenas candidatos com pontuação consolidada acima de `min_score = 0.45` são homologados para navegação.
 
 O ponto vencedor é salvo em `blackboard.free_space_target` e consumido diretamente pela `ActionPositionForPass`, que utiliza o APF para navegar até o ponto enquanto mantém o robô orientado para a bola com o driblador a 1500 RPM. Caso a condição falhe, o sistema utiliza o posicionamento lateral clássico como fallback seguro.
 
@@ -1240,6 +1286,23 @@ V_mov · V_obs < 0
 o obstáculo está atrás do vetor de movimento e sua repulsão pode ser ignorada.
 
 A implementação atual possui exatamente esse mecanismo.
+
+### 37.1 Desacoplamento de Orientação Angular (`target_yaw`) [IMPLEMENTADO v3.2]
+
+Robôs omnidirecionais da SSL possuem 3 graus de liberdade desacoplados no plano: $(v_x, v_y, \omega)$. No entanto, na implementação inicial do APF, a velocidade angular (`vw`) era acoplada compulsoriamente à direção do vetor atrativo de translação:
+
+$$\theta_{alvo} = \text{atan2}(attr_y, attr_x)$$
+
+Esse acoplamento rígido impedia que ações estratégicas orientassem a carcaça do robô de forma independente da sua direção de deslocamento (por exemplo, transladar para um lado enquanto aponta a carcaça de costas para um marcador, ou andar de lado mirando no gol).
+
+Na versão 3.2, o método `calculate_velocity` foi estendido com o parâmetro opcional:
+
+```python
+def calculate_velocity(self, robot_x, robot_y, robot_yaw, ball_x, ball_y, obstacles, target_yaw=None):
+```
+
+1. **Orientação Explícita (`target_yaw is not None`):** O erro angular e a rotação `vw` são calculados diretamente para o ângulo alvo determinado pela tática (ex.: $\theta_{shield}$ na blindagem de bola), enquanto a matriz de translação conduz o robô ao longo do campo.
+2. **Retrocompatibilidade (`target_yaw is None`):** Caso não seja especificado, o APF mantém a orientação natural apontada para o alvo atrativo.
 
 ---
 
@@ -2272,35 +2335,53 @@ Esta versão consolida os seguintes pilares fundamentais no projeto:
    - Recepção de passe universal para todas as posições da equipe.
    - Posicionamento ofensivo e de apoio baseado em zonas de espaço livre com desobstrução de linha de passe e histerese temporal.
 
+3. **Blindagem Ativa de Posse e Desacoplamento Cinemático (v3.2):**
+   - Eliminação de travamentos de rolete (*dribbler lockup*) e exposição da bola contra marcadores agressivos via *Body Shielding* (`ActionShieldBall`).
+   - Desacoplamento da velocidade angular (`vw`) no APF via parâmetro `target_yaw` no `ProportionalController.calculate_velocity`.
+   - Evasão tangencial em direção a quadrantes seguros e livres do campo.
+   - Conformidade estrita com o regulamento da SSL Divisão A através de odômetro de drible de 1 metro ($0.80\text{ m}$) e temporizador ($1.50\text{ s}$), com reciclagem segura de posse via passe de recuo.
+
 ---
 
 # 71. Testes Automatizados e Validação
 
-A robustez da tomada de decisão e da coordenação multiagente é assegurada por uma suíte de testes unitários automatizados localizada em `tests/test_tactical_scoring.py`.
+A robustez da tomada de decisão, da navegação desacoplada e da coordenação multiagente é assegurada por suítes de testes unitários automatizados localizadas em `tests/test_tactical_scoring.py` e `tests/test_shielding.py`.
 
-A suíte cobre **19 cenários determinísticos**, incluindo:
+A suíte cobre **36 cenários determinísticos**, incluindo:
 
-1. **Shot Scoring (5 testes):**
+1. **Shot Scoring (5 testes em `test_tactical_scoring.py`):**
    - Gol aberto: centro do gol altamente pontuado.
    - Centro bloqueado: seleção precisa e desimpedida dos cantos da trave ($y = \pm 0.45\text{ m}$).
    - Barreira completa: rejeição segura de finalizações inviáveis (retorna `None` e mantém posse).
    - Aliado bloqueando: aliados tratados estritamente como obstáculos físicos.
    - Progressão longitudinal: recompensa proporcional ao avanço da bola.
-2. **Pass Scoring (9 testes):**
+2. **Pass Scoring & Recepção Refinada (13 testes em `test_tactical_scoring.py`):**
    - Seleção de receptor desmarcado em relação a companheiro bloqueado.
    - Rejeição absoluta de trajetórias com oponente interceptando a reta.
+   - Veto sumário (`score = 0.0`) a receptores sob marcação colada ($\le 0.35\text{ m}$).
+   - Bloqueio estrito de adversários posicionados na frente do receptor.
    - Comparação entre receptor avançado e recuado (preferência pelo ganho territorial).
    - Validação da viabilidade de passes de recuo como alternativa segura de reciclagem de posse.
    - Funcionamento do filtro de avanço rápido `only_forward=True`.
    - Proteção de auto-perseguição (*Pass Lockout*) na `ActionGoToBall`.
    - Transferência de papel no `Maestro` promovendo o receptor antes da chegada física da bola.
+   - Acionamento preditivo de recepção com alcance estendido até $5.5\text{ m}$ em `ConditionIsPassArriving`.
+   - Ativação do rolete a 1500 RPM na `ActionGoToBall` durante recepção para evitar ricochete na lataria.
    - Integração com as Conditions da Behavior Tree (`ConditionEvaluateShot` e `ConditionEvaluatePass`).
-3. **Free-Space Positioning (5 testes):**
+3. **Free-Space Positioning (8 testes em `test_tactical_scoring.py`):**
    - Identificação precisa de regiões de espaço livre e desmarcadas na ala ofensiva.
-   - Contorno de linhas de passe obstruídas por adversários.
+   - Contorno de linhas de passe obstruídas por adversários e companheiros.
+   - Rejeição absoluta por corte rígido em linhas bloqueadas e aglomeração com aliados.
    - Histerese temporal com `stability_bonus` e `switch_margin`, impedindo oscilações indesejadas a 60 Hz.
    - Integração com o nó de condição `ConditionEvaluateFreeSpace`.
    - Execução de navegação APF com `ActionPositionForPass` consumindo o `free_space_target`.
+4. **Blindagem de Bola, Desacoplamento APF e Divisão A (10 testes em `tests/test_shielding.py`):**
+   - Desacoplamento angular do APF: rotação autônoma orientada por `target_yaw` independente do vetor atrativo.
+   - Detecção de pressão com `ConditionIsUnderPressure` no raio crítico ($0.75\text{ m}$) e seleção do oponente mais próximo.
+   - Cálculo geométrico do *Shield Angle* ($\theta_{shield} = \phi_{threat} + \pi$), posicionando o chassi rígido entre o marcador e a bola.
+   - Salvaguarda regulamentar da Divisão A: acionamento de `FAILURE` por limite de distância ($0.80\text{ m}$) ou tempo ($1.50\text{ s}$) para acionar passe de alívio.
+   - Salvaguarda frontal no `ActionFindShootingAngle`, abortando strafe lateral caso oponente feche a menos de $0.60\text{ m}$.
+   - Integração na Behavior Tree do atacante: acionamento imediato da sequência `proteger_bola` sob pressão quando não há brecha de finalização direta.
 
 ---
 
@@ -2359,3 +2440,65 @@ O **controlador converte vetores de navegação em comandos cinemáticos de moto
 O **ActionClient transmite os comandos em tempo real ao simulador/robôs físicos**.
 
 Essa separação modular constitui a base arquitetural do SSL Tactical Engine.
+
+---
+
+# 73. Diretrizes de Governança, Controle de Versão e Git [PADRÃO OBRIGATÓRIO]
+
+Para assegurar consistência entre desenvolvedores humanos, novas sessões de IA e conformidade com os padrões internacionais da RoboCup Small Size League (SSL), o repositório adota **Inglês** como idioma padrão estrito para controle de versão (branches e mensagens de commit).
+
+### 73.1 Padrão de Nomenclatura de Branches
+
+Toda branch criada deve seguir rigorosamente a sintaxe:
+
+$$\text{tipo}/\text{descricao-em-kebab-case}$$
+
+1. **Tipos Válidos:**
+   - `feat/`: Novas funcionalidades táticas, nós de Behavior Tree, motores de pontuação ou controle.
+   - `fix/`: Correções de bugs, ajustes de tolerância ou resolução de travamentos.
+   - `refactor/`: Reestruturação ou modularização de código sem alteração no comportamento tático.
+   - `test/`: Criação ou ampliação de suítes de testes unitários ou ferramentas de validação.
+   - `docs/`: Alterações na documentação, diagramas ou especificações arquiteturais.
+   - `chore/`: Ajustes de dependências, contêiner Docker, `.gitignore` ou scripts de automação.
+
+2. **Regras de Formatação:**
+   - Apenas caracteres minúsculos em inglês com palavras separadas por hífen (`kebab-case`).
+   - Proibido prefixo redundante (ex.: usar `test/apf-filter`, nunca `test/teste-filtro`).
+   - Exemplos oficiais:
+     - `feat/pass-refinements`
+     - `feat/ball-shielding`
+     - `feat/free-space-positioning`
+     - `fix/dribbler-lockup`
+     - `refactor/main-modules`
+     - `test/shielding-scenarios`
+
+### 73.2 Padrão de Mensagens de Commit (Conventional Commits com Escopo)
+
+As mensagens de commit devem seguir o formato internacional **Conventional Commits**:
+
+$$\text{type}(\text{scope}): \text{short description in English}$$
+
+1. **Escopos Reconhecidos:**
+   - `(tactics)`: Behavior Trees, Maestro, papéis táticos e transições de estado.
+   - `(scoring)`: Motores de Shot Scoring, Pass Scoring ou Free-Space Positioning.
+   - `(control)`: APF, controladores proporcionais, velocidades e desacoplamento angular.
+   - `(world)`: WorldModel, representação de bola e robôs, filtros EMA e percepção.
+   - `(bt)`: Ações e condições genéricas da Behavior Tree.
+   - `(docs)`: Especificações técnicas, README e diagramas XML/Groot.
+
+2. **Diretrizes Gramaticais:**
+   - Verbo inicial no imperativo/presente em inglês (`add`, `refine`, `fix`, `update`, `implement`).
+   - Primeira letra minúscula após o escopo; sem ponto final no título.
+   - Limite máximo de 72 caracteres no título.
+   - Exemplos oficiais:
+     - `feat(scoring): refine pass scoring with strict blocking and tight-marking veto`
+     - `feat(control): limit pass kick speed to 3.5 m/s for controlled reception`
+     - `fix(bt): expand pass arriving detection range to 5.5m in ConditionIsPassArriving`
+     - `test(scoring): add unit tests for close-marking rejection`
+     - `docs(spec): document git governance and repository conventions in v3.3`
+
+### 73.3 Regra de Ouro para Agentes de IA e Novos Chats
+
+Qualquer modelo de IA ou desenvolvedor que inicie tarefas neste repositório **deve** adotar essas convenções:
+- Criar branches e registrar commits exclusivamente em inglês conforme as seções 73.1 e 73.2.
+- Garantir que a suíte de testes (`python3 -m unittest discover tests`) permaneça 100% aprovada antes de qualquer submissão.

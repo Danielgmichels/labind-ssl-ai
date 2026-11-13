@@ -1,6 +1,7 @@
 import math
 import time
 from .core import Node, NodeState
+from strategy.tactical_utils import TACTICAL_CONFIG
 
 # ==========================================
 # NÓS DE AÇÃO SIMPLES (Segurança)
@@ -113,15 +114,22 @@ class ActionGoToBall(Node):
             alvo_y = max(-1.2, min(alvo_y, 1.2))
 
 
-        # APF para calcular o caminho, desviando de robôs e das paredes virtuais[cite: 1]
+        # APF para calcular o caminho, desviando de robôs e das paredes virtuais
         vf, vl, vw = blackboard.controller.calculate_velocity(
             blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw, 
             alvo_x, alvo_y, blackboard.obstacles
         )
         
+        # PASS RECEPTION ASSIST: Se este robô é o alvo do passe em andamento,
+        # aciona o driblador para travar a bola e amortecer o domínio sem ricochete
+        last_pass_time = getattr(blackboard, 'last_pass_time', 0.0)
+        pass_target = getattr(blackboard, 'pass_in_progress_target', None)
+        is_receiving = (time.time() - last_pass_time < 1.5) and (blackboard.my_id == pass_target)
+        dribbler = 1500.0 if is_receiving else 0.0
+
         blackboard.action.send_command(
             robot_id=blackboard.my_id, v_forward=vf, v_left=vl, vw=vw,
-            kick_speed=0.0, dribbler_speed=0.0
+            kick_speed=0.0, dribbler_speed=dribbler
         )
         return NodeState.RUNNING
 
@@ -189,6 +197,124 @@ class ActionSmartDribble(Node):
         return NodeState.RUNNING
 
 
+class ActionShieldBall(Node):
+    """
+    Protege a posse de bola usando a carcaça física do robô (Body Shielding).
+    Gira o chassi para manter a traseira voltada contra o adversário mais próximo,
+    protegendo o rolete frontal e a bola contra tentativas de desarme.
+    Executa evasão tangencial em direção ao espaço livre e monitora o limite
+    de drible da SSL Divisão A (máx 0.8m / 1.5s) antes de ceder a posse com FAILURE
+    para ativar o passe de recuo.
+    """
+    def __init__(self, max_duration=None, max_distance=None):
+        super().__init__()
+        self.max_duration = max_duration
+        self.max_distance = max_distance
+        self.start_time = None
+        self.start_x = None
+        self.start_y = None
+        self.last_tick_time = 0.0
+
+    def tick(self, blackboard):
+        if blackboard.my_pos is None:
+            return NodeState.FAILURE
+
+        shield_cfg = TACTICAL_CONFIG.get("SHIELD", {})
+        limit_duration = self.max_duration if self.max_duration is not None else shield_cfg.get("max_shield_duration", 1.50)
+        limit_distance = self.max_distance if self.max_distance is not None else shield_cfg.get("max_shield_distance", 0.80)
+        dribbler_rpm = shield_cfg.get("dribbler_speed", 1500.0)
+        tangent_dist = shield_cfg.get("tangent_distance", 0.60)
+        field_margin_y = shield_cfg.get("field_margin_y", 2.60)
+
+        now = time.time()
+        # Reinicia odômetro se a ação foi interrompida por mais de 0.3s
+        if self.start_time is None or (now - self.last_tick_time) > 0.3:
+            self.start_time = now
+            self.start_x = blackboard.my_pos.pos.x
+            self.start_y = blackboard.my_pos.pos.y
+        self.last_tick_time = now
+
+        # 1. Checagem do Odômetro e Tempo Limite (Regulamento SSL Divisão A)
+        elapsed_time = now - self.start_time
+        dist_percorrida = math.hypot(blackboard.my_pos.pos.x - self.start_x,
+                                     blackboard.my_pos.pos.y - self.start_y)
+
+        # Se atingiu o limite de condução ou tempo, falha para liberar o passe de recuo
+        if elapsed_time > limit_duration or dist_percorrida > limit_distance:
+            self.start_time = None
+            return NodeState.FAILURE
+
+        # 2. Identificação do Adversário Ameaçador
+        threatening_enemy = getattr(blackboard, 'threatening_enemy', None)
+        if threatening_enemy is None:
+            danger_radius = shield_cfg.get("danger_radius", 0.75)
+            min_dist = float('inf')
+            enemies = getattr(blackboard, 'enemies', [])
+            for obs in enemies:
+                if abs(obs.pos.x) < 0.001 and abs(obs.pos.y) < 0.001:
+                    continue
+                d = math.hypot(obs.pos.x - blackboard.my_pos.pos.x,
+                               obs.pos.y - blackboard.my_pos.pos.y)
+                if d < danger_radius and d < min_dist:
+                    min_dist = d
+                    threatening_enemy = obs
+
+        # Se não há adversário pressionando, a blindagem cumpriu o papel e autoriza ações livres
+        if threatening_enemy is None:
+            self.start_time = None
+            return NodeState.SUCCESS
+
+        # 3. Geometria de Blindagem (Shield Angle)
+        # Vetor do nosso robô para o adversário
+        dx_enemy = threatening_enemy.pos.x - blackboard.my_pos.pos.x
+        dy_enemy = threatening_enemy.pos.y - blackboard.my_pos.pos.y
+        angulo_adversario = math.atan2(dy_enemy, dx_enemy)
+
+        # Target Yaw: Oposto ao adversário (+ pi) para virar a carcaça traseira contra ele
+        target_yaw = (angulo_adversario + math.pi + math.pi) % (2 * math.pi) - math.pi
+
+        # 4. Evasão Tangencial (Escape Perpendicular ao Adversário)
+        tangente_1 = angulo_adversario + (math.pi / 2.0)
+        tangente_2 = angulo_adversario - (math.pi / 2.0)
+
+        # Projeta pontos candidatos
+        cand1_x = blackboard.my_pos.pos.x + tangent_dist * math.cos(tangente_1)
+        cand1_y = blackboard.my_pos.pos.y + tangent_dist * math.sin(tangente_1)
+
+        cand2_x = blackboard.my_pos.pos.x + tangent_dist * math.cos(tangente_2)
+        cand2_y = blackboard.my_pos.pos.y + tangent_dist * math.sin(tangente_2)
+
+        score1 = 0.0
+        score2 = 0.0
+
+        if abs(cand1_y) < field_margin_y: score1 += 1.0
+        if abs(cand2_y) < field_margin_y: score2 += 1.0
+
+        # Favorece progredir levemente ao ataque se houver espaço
+        direcao_ataque = 1.0 if blackboard.enemy_goal_x > 0 else -1.0
+        if (cand1_x - blackboard.my_pos.pos.x) * direcao_ataque > 0: score1 += 0.5
+        if (cand2_x - blackboard.my_pos.pos.x) * direcao_ataque > 0: score2 += 0.5
+
+        if score1 >= score2:
+            alvo_x, alvo_y = cand1_x, cand1_y
+        else:
+            alvo_x, alvo_y = cand2_x, cand2_y
+
+        alvo_y = max(-field_margin_y, min(alvo_y, field_margin_y))
+
+        # 5. Navegação APF com Orientação Desacoplada
+        vf, vl, vw = blackboard.controller.calculate_velocity(
+            blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw,
+            alvo_x, alvo_y, blackboard.obstacles, target_yaw=target_yaw
+        )
+
+        blackboard.action.send_command(
+            robot_id=blackboard.my_id, v_forward=vf, v_left=vl, vw=vw,
+            kick_speed=0.0, dribbler_speed=dribbler_rpm
+        )
+        return NodeState.RUNNING
+
+
 class ActionAimAndShoot(Node):
     """Gira no próprio eixo mirando no alvo livre (best_shot_y) e atira."""
     def tick(self, blackboard):
@@ -229,7 +355,7 @@ class ActionAimAndShoot(Node):
 
 class ActionFindShootingAngle(Node):
     """Fica de frente para o gol rodando o driblador e anda de lado (Strafing) até abrir espaço."""
-    def __init__(self, max_duration=1.5):
+    def __init__(self, max_duration=0.8):
         super().__init__()
         self.max_duration = max_duration
         self.start_time = None
@@ -250,6 +376,20 @@ class ActionFindShootingAngle(Node):
         if (now - self.start_time > self.max_duration) or abs(blackboard.my_pos.pos.y) > 2.8:
             self.start_time = None
             return NodeState.FAILURE
+
+        # Se um adversário estiver fechando imediatamente na nossa frente,
+        # falha para que a árvore ative a blindagem corporal ou passe em vez de expor a bola
+        if hasattr(blackboard, 'enemies'):
+            for obs in blackboard.enemies:
+                if abs(obs.pos.x) < 0.001 and abs(obs.pos.y) < 0.001:
+                    continue
+                d = math.hypot(obs.pos.x - blackboard.my_pos.pos.x, obs.pos.y - blackboard.my_pos.pos.y)
+                if d < 0.60:
+                    ang = math.atan2(obs.pos.y - blackboard.my_pos.pos.y, obs.pos.x - blackboard.my_pos.pos.x)
+                    err = (ang - blackboard.my_pos.yaw + math.pi) % (2 * math.pi) - math.pi
+                    if abs(err) < 0.8:
+                        self.start_time = None
+                        return NodeState.FAILURE
 
         gol_inimigo_x = blackboard.enemy_goal_x
         gol_inimigo_y = 0.0
@@ -354,20 +494,21 @@ class ActionPassBall(Node):
         
         raio_do_robo = 0.09 
         vl = vw * raio_do_robo 
-        vf = 0.1
+        vf = 0.05
         velocidade_chute = 0.0
         dribbler = 1500.0
         
         # === A CORREÇÃO DO SNIPER VEM AQUI ===
-        # Exige alinhamento quase perfeito (0.02 radianos) antes de soltar a bomba
-        if abs(erro_angular) < 0.02:
+        # Exige alinhamento angular refinado antes do disparo (0.05 rad / ~2.8 graus)
+        # para alinhamento rápido e responsivo, eliminando a demora do atacante
+        if abs(erro_angular) < 0.05:
             vw = 0.0
             vl = 0.0
             
             # Calcula a distância até o ponto de encontro para definir a força
             dist_passe = math.hypot(alvo_x - blackboard.my_pos.pos.x, alvo_y - blackboard.my_pos.pos.y)
-            # Garante força mínima de 2.5 m/s para não morrer no atrito do piso
-            velocidade_chute = max(2.5, min(dist_passe * 2.2, 6.0))
+            # Potência calibrada para passe controlado (2.2 a 3.5 m/s) para amortecimento e recepção firme
+            velocidade_chute = max(2.2, min(1.8 + dist_passe * 0.55, 5.5))
             
             # FREIA O ROBÔ: Garante que a bola bata limpa no chutador e não nas rodas
             vf = 0.0 
@@ -421,6 +562,16 @@ class ActionInterceptPass(Node):
             blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw, 
             intercept_x, intercept_y, [] 
         )
+
+        # Boost de aceleração na recepção: se houver erro em relação à trajetória,
+        # assegura velocidade de aproximação suficiente (>= 0.9 m/s) para fechar o corredor a tempo
+        dist_interc = math.hypot(intercept_x - blackboard.my_pos.pos.x, intercept_y - blackboard.my_pos.pos.y)
+        if dist_interc > 0.08:
+            mag = math.hypot(vf, vl)
+            if 0.01 < mag < 0.9:
+                boost = 0.9 / mag
+                vf *= boost
+                vl *= boost
         
         # 3. Gira para olhar diretamente para a BOLA
         target_angle = math.atan2(blackboard.ball_pos.y - blackboard.my_pos.pos.y, 
@@ -431,7 +582,7 @@ class ActionInterceptPass(Node):
         vw = erro_angular * blackboard.controller.kp_angular
         vw = max(min(vw, blackboard.controller.max_angular_vel), -blackboard.controller.max_angular_vel)
         
-        # 4. Motor e Driblador
+        # 4. Motor e Driblador (1500 RPM ativo para travar e amortecer o impacto)
         blackboard.action.send_command(
             robot_id=blackboard.my_id, v_forward=vf, v_left=vl, vw=vw,
             kick_speed=0.0, dribbler_speed=1500.0

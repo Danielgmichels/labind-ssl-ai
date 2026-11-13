@@ -13,7 +13,7 @@ class ProportionalController:
         self.dist_segura = 0.20  # Raio do robô + folga mínima
         self.kr_repulsao = 0.017  # Repulsão base muito mais suave
 
-    def calculate_velocity(self, robot_x, robot_y, robot_yaw, ball_x, ball_y, obstacles):
+    def calculate_velocity(self, robot_x, robot_y, robot_yaw, ball_x, ball_y, obstacles, target_yaw=None):
         # 1. FORÇA DE ATRAÇÃO
         attr_x = ball_x - robot_x  
         attr_y = ball_y - robot_y  
@@ -100,7 +100,10 @@ class ProportionalController:
         vy_global += rep_y
 
         # 4. ROTAÇÃO
-        target_angle = math.atan2(attr_y, attr_x)
+        if target_yaw is not None:
+            target_angle = target_yaw
+        else:
+            target_angle = math.atan2(attr_y, attr_x)
         erro_angular = target_angle - robot_yaw
         erro_angular = (erro_angular + math.pi) % (2 * math.pi) - math.pi
         
