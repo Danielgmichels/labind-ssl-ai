@@ -275,5 +275,86 @@ class TestTrapezoidalTrajectoryGenerator(unittest.TestCase):
         self.assertGreater(vf, 0.0)
 
 
+class TestCircularVisibilityGraphPlanner(unittest.TestCase):
+    def setUp(self):
+        self.planner = get_path_planner("C_VG")
+
+    def test_direct_line_of_sight_early_return(self):
+        # Sem obstáculos bloqueando a reta direta entre (-2.0, 0.0) e (2.0, 0.0)
+        start = (-2.0, 0.0)
+        goal = (2.0, 0.0)
+        obstacles = [{'x': 0.0, 'y': 2.0, 'radius': 0.09}] # Obstáculo bem longe
+        path = self.planner.plan(start, goal, obstacles, forbidden_zones=[])
+
+        # Deve retornar diretamente [start, goal] em O(N)
+        self.assertEqual(len(path), 2)
+        self.assertEqual(path[0], start)
+        self.assertEqual(path[1], goal)
+
+    def test_detour_around_single_obstacle(self):
+        # Obstáculo bloqueando diretamente a reta Y = 0
+        start = (-2.0, 0.0)
+        goal = (2.0, 0.0)
+        obstacles = [{'x': 0.0, 'y': 0.0, 'radius': 0.09}]
+        path = self.planner.plan(start, goal, obstacles, forbidden_zones=[])
+
+        self.assertGreater(len(path), 2)
+        self.assertEqual(path[0], start)
+        self.assertEqual(path[-1], goal)
+
+        # Nenhum waypoint do caminho deve violar a distância mínima do centro do obstáculo
+        min_allowed_dist = 0.22 # Raio inflado padrão
+        for wp in path:
+            dist = math.hypot(wp[0] - 0.0, wp[1] - 0.0)
+            self.assertGreaterEqual(dist, min_allowed_dist - 0.01)
+
+    def test_multiple_obstacles_navigation(self):
+        start = (-3.0, 0.0)
+        goal = (3.0, 0.0)
+        obstacles = [
+            {'x': -1.5, 'y': 0.0, 'radius': 0.09},
+            {'x': 0.0, 'y': 0.1, 'radius': 0.09},
+            {'x': 1.5, 'y': -0.1, 'radius': 0.09}
+        ]
+        path = self.planner.plan(start, goal, obstacles, forbidden_zones=[])
+
+        self.assertGreater(len(path), 3)
+        self.assertEqual(path[0], start)
+        self.assertEqual(path[-1], goal)
+
+    def test_unstuck_when_start_inside_obstacle(self):
+        # Robô preso dentro da margem de colisão de um adversário
+        start = (0.05, 0.05)
+        goal = (2.0, 0.0)
+        obstacles = [{'x': 0.0, 'y': 0.0, 'radius': 0.09}]
+        path = self.planner.plan(start, goal, obstacles, forbidden_zones=[])
+
+        # Não deve travar nem retornar lista vazia
+        self.assertGreaterEqual(len(path), 2)
+        self.assertEqual(path[-1], goal)
+
+    def test_execution_time_under_one_millisecond(self):
+        import time
+        start = (-3.5, 0.0)
+        goal = (3.5, 0.0)
+        obstacles = [
+            {'x': -2.0, 'y': 0.1, 'radius': 0.09},
+            {'x': -0.5, 'y': -0.2, 'radius': 0.09},
+            {'x': 0.8, 'y': 0.3, 'radius': 0.09},
+            {'x': 2.0, 'y': -0.1, 'radius': 0.09},
+        ]
+        # Warmup
+        self.planner.plan(start, goal, obstacles, forbidden_zones=[])
+
+        t0 = time.perf_counter()
+        for _ in range(50):
+            self.planner.plan(start, goal, obstacles, forbidden_zones=[])
+        t1 = time.perf_counter()
+
+        avg_time_ms = ((t1 - t0) / 50.0) * 1000.0
+        # O tempo médio deve ser inferior a 1.5 ms no ambiente Python
+        self.assertLess(avg_time_ms, 1.5)
+
+
 if __name__ == "__main__":
     unittest.main()
