@@ -15,3 +15,8 @@ __pycache__/
 
 # Configurações do Editor (VS Code)
 .vscode/
+
+# Benchmarks e telemetria bruta de simulação
+benchmarks/raw_logs/
+benchmarks/results/
+*.csv
