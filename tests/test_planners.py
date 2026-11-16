@@ -17,6 +17,7 @@ from navigation.factory import get_path_planner, register_path_planner
 from navigation.manager import NavigationManager
 from navigation.APF import ProportionalController
 from navigation.Obstacles import VirtualObstacle, create_solid_defense_walls
+from navigation.trajectory.trapezoidal import TrapezoidalTrajectoryGenerator
 from benchmarks.logger import BenchmarkLogger
 
 
@@ -132,6 +133,24 @@ class TestNavigationManager(unittest.TestCase):
         self.assertEqual(mgr.robot_states[1]['last_pos'], (0.0, 0.0))
         self.assertEqual(mgr.robot_states[2]['last_pos'], (-2.0, 2.0))
 
+    def test_navigation_manager_with_trapezoidal_generator(self):
+        @register_path_planner("TEST_TRAP_INTEGRATION")
+        class TrapPlanner(IPathPlanner):
+            def plan(self, start_pos, goal_pos, obstacles, forbidden_zones):
+                return [start_pos, (2.0, 0.0), goal_pos]
+
+        mgr = NavigationManager(planner_type="TEST_TRAP_INTEGRATION", max_vel=2.5, max_acc=4.0)
+
+        # Passo 1: Partida do repouso
+        vf1, vl1, vw1 = mgr.calculate_velocity(0.0, 0.0, 0.0, 4.0, 0.0, [], robot_id=1)
+        self.assertGreater(vf1, 0.0)
+        self.assertLessEqual(vf1, 4.0 * (1.0 / 60.0) + 0.01)
+
+        # Passo 2: Próximo ao alvo (3.95m de 4.0m)
+        vf2, vl2, vw2 = mgr.calculate_velocity(3.95, 0.0, 0.0, 4.0, 0.0, [], robot_id=1)
+        # Deve estar freando muito forte próximo de zero
+        self.assertLess(vf2, 1.0)
+
     def test_unstuck_projection(self):
         mgr = NavigationManager(planner_type="LEGACY_APF")
         obstacles = [{'x': 1.0, 'y': 1.0, 'radius': 0.09}]
@@ -178,6 +197,82 @@ class TestBenchmarkLogger(unittest.TestCase):
         finally:
             if os.path.exists(tmp_path):
                 os.remove(tmp_path)
+
+
+class TestTrapezoidalTrajectoryGenerator(unittest.TestCase):
+    def setUp(self):
+        self.traj_gen = TrapezoidalTrajectoryGenerator(
+            max_vel=2.5,
+            max_acc=4.0,
+            max_lat_acc=3.5,
+            kp_angular=2.0,
+            max_angular_vel=5.0,
+            lookahead_dist=0.18,
+            dt=1.0 / 60.0
+        )
+
+    def test_acceleration_from_rest(self):
+        # Robô em (0, 0), meta distante em (4.0, 0.0), v0 = 0
+        path = [(0.0, 0.0), (4.0, 0.0)]
+        vf, vl, vw = self.traj_gen.compute_step(path, (0.0, 0.0, 0.0), v0=(0.0, 0.0))
+
+        # A velocidade linear no primeiro ciclo deve ser a_max * dt = 4.0 * (1/60) ~ 0.0667 m/s
+        expected_v = 4.0 * (1.0 / 60.0)
+        self.assertAlmostEqual(vf, expected_v, places=3)
+        self.assertAlmostEqual(vl, 0.0, places=3)
+
+    def test_preserves_initial_velocity_v0(self):
+        # Robô já em movimento a 2.0 m/s na direção X
+        path = [(0.0, 0.0), (4.0, 0.0)]
+        vf, vl, vw = self.traj_gen.compute_step(path, (0.0, 0.0, 0.0), v0=(2.0, 0.0))
+
+        # Deve continuar a partir de 2.0 m/s + incremento de aceleração, sem cair para 0
+        self.assertGreater(vf, 2.0)
+        self.assertLessEqual(vf, 2.5)
+        self.assertAlmostEqual(vl, 0.0, places=3)
+
+    def test_braking_near_goal(self):
+        # Robô muito próximo do alvo (10 cm restantes), mesmo com v0 alta ele é forçado a frear
+        path = [(0.90, 0.0), (1.0, 0.0)]
+        vf, vl, vw = self.traj_gen.compute_step(path, (0.90, 0.0, 0.0), v0=(2.5, 0.0))
+
+        # Limite de frenagem: v_brake = sqrt(2 * a * d) = sqrt(2 * 4.0 * 0.10) = sqrt(0.8) ~ 0.894 m/s
+        v_brake = math.sqrt(2.0 * 4.0 * 0.10)
+        self.assertLessEqual(vf, v_brake + 0.1)
+
+    def test_stop_when_reached_goal(self):
+        # Robô a 2 cm do alvo (dentro da tolerância de 3 cm)
+        path = [(1.0, 0.0)]
+        vf, vl, vw = self.traj_gen.compute_step(path, (0.985, 0.0, 0.0), v0=(0.1, 0.0))
+
+        self.assertEqual(vf, 0.0)
+        self.assertEqual(vl, 0.0)
+
+    def test_corner_radius_and_curvature_limit(self):
+        # Curva de 90 graus: (0, 0) -> (1, 0) -> (1, 1)
+        p1 = (0.0, 0.0)
+        p2 = (1.0, 0.0)
+        p3 = (1.0, 1.0)
+        radius = self.traj_gen._compute_corner_radius(p1, p2, p3)
+
+        # Raio circunscrito aos 3 pontos deve ser finito e mensurável (~0.707 m)
+        self.assertFalse(math.isinf(radius))
+        self.assertAlmostEqual(radius, 0.7071, places=2)
+
+        # Teste de colineares: (0, 0) -> (1, 0) -> (2, 0) deve dar raio infinito
+        inf_radius = self.traj_gen._compute_corner_radius((0.0, 0.0), (1.0, 0.0), (2.0, 0.0))
+        self.assertTrue(math.isinf(inf_radius))
+
+    def test_target_yaw_decoupling(self):
+        # Robô se movendo em X para (2.0, 0.0), mas com target_yaw fixado em 90 graus (pi/2)
+        path = [(0.0, 0.0), (2.0, 0.0)]
+        target_yaw = math.pi / 2.0
+        vf, vl, vw = self.traj_gen.compute_step(path, (0.0, 0.0, 0.0), target_yaw=target_yaw, v0=(1.0, 0.0))
+
+        # A velocidade angular deve ser positiva para girar em direção a pi/2
+        self.assertGreater(vw, 0.0)
+        # O robô continua acelerando para frente em X (v_forward > 0)
+        self.assertGreater(vf, 0.0)
 
 
 if __name__ == "__main__":
