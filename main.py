@@ -7,6 +7,8 @@ import os
 import struct
 import argparse
 
+from navigation.manager import NavigationManager
+
 # 1. Descobre onde o main.py está e aponta para a pasta proto_msg interna
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROTO_MSGS_DIR = os.path.join(CURRENT_DIR, "proto_msg")
@@ -78,7 +80,7 @@ def main():
     # 2. Inicializa os módulos de infraestrutura
     vision = VisionClient(port=5558) 
     referee = RefereeClient(ip="224.5.23.1", port=10003)
-    controller = ProportionalController(kp_linear=2.0, kp_angular=2.0, max_vel=2.5, max_angular_vel=5.0)
+    controller = NavigationManager(planner_type="C_VG", max_vel=2.5, max_acc=5.0)
     action = ActionClient(port=porta_comando)
     
     # 3. Inicializa o WorldModel e o Blackboard

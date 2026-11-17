@@ -40,11 +40,11 @@ class CircularVisibilityGraphPlanner(IPathPlanner):
         Calcula a rota livre de colisão conectando start_pos a goal_pos.
         """
         # 1. Pré-processamento e extração de círculos inflados válidos
-        circles = self._extract_inflated_circles(obstacles)
+        circles = self._extract_inflated_circles(obstacles, goal_pos=goal_pos)
 
         # 2. Desatolamento se start ou goal estiverem dentro de algum círculo
         start = self._unstuck_point(start_pos, circles)
-        goal = self._unstuck_point(goal_pos, circles, ref_point=start)
+        goal = self._unstuck_point(goal_pos, circles, ref_point=start, is_goal=True)
 
         # 3. OTIMIZAÇÃO LAZY: Se a reta direta estiver livre, retorna imediatamente em O(N)!
         if not self._is_segment_blocked(start, goal, circles, forbidden_zones):
@@ -52,7 +52,7 @@ class CircularVisibilityGraphPlanner(IPathPlanner):
 
         # 4. Filtra círculos relevantes (próximos da reta start-goal) para limitar CPU
         relevant_circles = self._filter_relevant_circles(start, goal, circles)
-        if not relevant_circles:
+        if not relevant_circles and not forbidden_zones:
             return [start, goal]
 
         # 5. Estrutura do Grafo C-VG
@@ -67,13 +67,17 @@ class CircularVisibilityGraphPlanner(IPathPlanner):
         # 6. Tangentes a partir de Start e para Goal
         self._add_terminal_tangents(start, 0, goal, 1, relevant_circles, forbidden_zones, nodes, adj, circle_nodes)
 
-        # 7. Bitangentes Analíticas entre Pares de Círculos (apenas 4 por par!)
+        # 7. Vértices de Zonas Proibidas (Contorno analítico das áreas de gol)
+        if forbidden_zones:
+            self._add_zone_corners(start, 0, goal, 1, forbidden_zones, relevant_circles, nodes, adj, circle_nodes)
+
+        # 8. Bitangentes Analíticas entre Pares de Círculos (apenas 4 por par!)
         self._add_circle_bitangents(relevant_circles, forbidden_zones, nodes, adj, circle_nodes)
 
-        # 8. Arcos Circulares conectando nós adjacentes no mesmo círculo
+        # 9. Arcos Circulares conectando nós adjacentes no mesmo círculo
         self._add_perimeter_arcs(relevant_circles, forbidden_zones, nodes, adj, circle_nodes)
 
-        # 9. Busca A* com Heurística Euclidiana
+        # 10. Busca A* com Heurística Euclidiana
         path = self._astar_search(0, 1, nodes, adj)
 
         if not path:
@@ -81,7 +85,11 @@ class CircularVisibilityGraphPlanner(IPathPlanner):
 
         return path
 
-    def _extract_inflated_circles(self, obstacles: List[Dict[str, Any]]) -> List[Tuple[float, float, float]]:
+    def _extract_inflated_circles(
+        self,
+        obstacles: List[Dict[str, Any]],
+        goal_pos: Optional[Tuple[float, float]] = None
+    ) -> List[Tuple[float, float, float]]:
         """Retorna lista de (cx, cy, r_inflated) para cada obstáculo."""
         circles = []
         for obs in obstacles:
@@ -89,6 +97,15 @@ class CircularVisibilityGraphPlanner(IPathPlanner):
             oy = float(obs.get('y', 0.0))
             r = float(obs.get('radius', self.robot_radius))
             r_inflated = r + self.robot_radius + self.safety_margin
+
+            # Se o alvo (ex: bola disputada ou kickoff) estiver próximo ao obstáculo,
+            # reduz o raio inflado para permitir aproximação sem colisão física
+            if goal_pos is not None:
+                gx, gy = goal_pos
+                dist_goal = math.hypot(ox - gx, oy - gy)
+                if dist_goal < r_inflated + 0.05:
+                    r_inflated = max(r + 0.01, dist_goal - 0.03)
+
             circles.append((ox, oy, r_inflated))
         return circles
 
@@ -96,13 +113,19 @@ class CircularVisibilityGraphPlanner(IPathPlanner):
         self,
         p: Tuple[float, float],
         circles: List[Tuple[float, float, float]],
-        ref_point: Optional[Tuple[float, float]] = None
+        ref_point: Optional[Tuple[float, float]] = None,
+        is_goal: bool = False
     ) -> Tuple[float, float]:
         """Projeta o ponto para fora da borda do círculo se estiver dentro."""
         px, py = p
         for cx, cy, r in circles:
             dist = math.hypot(px - cx, py - cy)
             if dist < r:
+                # Se for o ponto de chegada (meta/bola), só projeta se estiver
+                # estritamente dentro da carcaça física rígida do robô
+                if is_goal and dist >= (self.robot_radius + 0.01):
+                    continue
+
                 if dist > 1e-4:
                     nx = (px - cx) / dist
                     ny = (py - cy) / dist
@@ -190,7 +213,10 @@ class CircularVisibilityGraphPlanner(IPathPlanner):
         p2: Tuple[float, float],
         zone: Dict[str, float]
     ) -> bool:
-        """Verifica se o segmento cruza a caixa retangular inflada da zona proibida."""
+        """
+        Verifica se o segmento cruza a caixa retangular inflada da zona proibida.
+        Implementação canônica de recorte de linha por Liang-Barsky.
+        """
         margin = self.robot_radius
         xmin = zone['xmin'] - margin
         xmax = zone['xmax'] + margin
@@ -202,24 +228,30 @@ class CircularVisibilityGraphPlanner(IPathPlanner):
         dx = x2 - x1
         dy = y2 - y1
 
-        t_min, t_max = 0.0, 1.0
+        p = [-dx, dx, -dy, dy]
+        q = [x1 - xmin, xmax - x1, y1 - ymin, ymax - y1]
 
-        for p_edge, d_edge in [(xmin - x1, -dx), (x1 - xmax, dx), (ymin - y1, -dy), (y1 - ymax, dy)]:
-            if abs(d_edge) < 1e-8:
-                if p_edge > 0:
-                    return False
+        u1 = 0.0
+        u2 = 1.0
+
+        for i in range(4):
+            if abs(p[i]) < 1e-9:
+                if q[i] < 0:
+                    return False  # Segmento paralelo fora da faixa
             else:
-                t = p_edge / d_edge
-                if d_edge < 0:
-                    if t > t_min:
-                        t_min = t
+                t = q[i] / p[i]
+                if p[i] < 0:
+                    # Direcionado de fora para dentro
+                    if t > u1:
+                        u1 = t
                 else:
-                    if t < t_max:
-                        t_max = t
-                if t_min > t_max:
+                    # Direcionado de dentro para fora
+                    if t < u2:
+                        u2 = t
+                if u1 > u2:
                     return False
 
-        return t_max > 0.001 and t_min < 0.999
+        return u2 >= 0.001 and u1 <= 0.999
 
     def _add_terminal_tangents(
         self,
@@ -260,6 +292,94 @@ class CircularVisibilityGraphPlanner(IPathPlanner):
 
                     dist = math.hypot(goal[0] - pt[0], goal[1] - pt[1])
                     adj[nid].append((goal_id, dist, [goal]))
+
+    def _add_zone_corners(
+        self,
+        start: Tuple[float, float],
+        start_id: int,
+        goal: Tuple[float, float],
+        goal_id: int,
+        forbidden_zones: List[Dict[str, float]],
+        circles: List[Tuple[float, float, float]],
+        nodes: Dict[int, Tuple[float, float]],
+        adj: Dict[int, List[Tuple[int, float, List[Tuple[float, float]]]]],
+        circle_nodes: Dict[int, List[Tuple[int, float]]]
+    ):
+        """
+        Adiciona os 4 vértices externos de cada zona proibida (com margem de segurança)
+        como nós navegáveis no Grafo C-VG. Permite contornar analiticamente as áreas de defesa
+        mesmo na ausência de outros robôs.
+        """
+        margin = self.robot_radius + self.safety_margin
+        all_corner_ids = []
+
+        for zone in forbidden_zones:
+            # Expande limites externos com margem de segurança
+            xmin = max(-5.80, min(5.80, zone['xmin'] - margin))
+            xmax = max(-5.80, min(5.80, zone['xmax'] + margin))
+            ymin = max(-4.30, min(4.30, zone['ymin'] - margin))
+            ymax = max(-4.30, min(4.30, zone['ymax'] + margin))
+
+            corners = [
+                (xmin, ymin),
+                (xmin, ymax),
+                (xmax, ymax),
+                (xmax, ymin)
+            ]
+
+            zone_corner_ids = []
+            for c_pt in corners:
+                nid = len(nodes)
+                nodes[nid] = c_pt
+                adj[nid] = []
+                zone_corner_ids.append(nid)
+                all_corner_ids.append(nid)
+
+            # Conecta as 4 arestas externas ao longo do perímetro da caixa
+            for idx in range(4):
+                id1 = zone_corner_ids[idx]
+                id2 = zone_corner_ids[(idx + 1) % 4]
+                p1 = nodes[id1]
+                p2 = nodes[id2]
+                if not self._is_segment_blocked(p1, p2, circles, forbidden_zones=[]):
+                    cost = math.hypot(p2[0] - p1[0], p2[1] - p1[1])
+                    adj[id1].append((id2, cost, [p2]))
+                    adj[id2].append((id1, cost, [p1]))
+
+        # Conecta Start aos vértices de cantos visíveis
+        for cid in all_corner_ids:
+            c_pt = nodes[cid]
+            if not self._is_segment_blocked(start, c_pt, circles, forbidden_zones):
+                dist = math.hypot(c_pt[0] - start[0], c_pt[1] - start[1])
+                adj[start_id].append((cid, dist, [c_pt]))
+
+            # Conecta vértices de cantos visíveis ao Goal
+            if not self._is_segment_blocked(c_pt, goal, circles, forbidden_zones):
+                dist = math.hypot(goal[0] - c_pt[0], goal[1] - c_pt[1])
+                adj[cid].append((goal_id, dist, [goal]))
+
+        # Conecta cantos visíveis entre si (para cruzar ou navegar entre caixas)
+        for i in range(len(all_corner_ids)):
+            id1 = all_corner_ids[i]
+            p1 = nodes[id1]
+            for j in range(i + 1, len(all_corner_ids)):
+                id2 = all_corner_ids[j]
+                p2 = nodes[id2]
+                if not self._is_segment_blocked(p1, p2, circles, forbidden_zones):
+                    cost = math.hypot(p2[0] - p1[0], p2[1] - p1[1])
+                    adj[id1].append((id2, cost, [p2]))
+                    adj[id2].append((id1, cost, [p1]))
+
+        # Conecta nós de tangentes de robôs aos cantos de áreas
+        for c_idx, c_list in circle_nodes.items():
+            for c_nid, _ in c_list:
+                c_pt = nodes[c_nid]
+                for cid in all_corner_ids:
+                    c_pt_zone = nodes[cid]
+                    if not self._is_segment_blocked(c_pt, c_pt_zone, circles, forbidden_zones, ignore_c1=c_idx):
+                        cost = math.hypot(c_pt_zone[0] - c_pt[0], c_pt_zone[1] - c_pt[1])
+                        adj[c_nid].append((cid, cost, [c_pt_zone]))
+                        adj[cid].append((c_nid, cost, [c_pt]))
 
     def _add_circle_bitangents(
         self,

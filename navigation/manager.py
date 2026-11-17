@@ -81,7 +81,7 @@ class NavigationManager:
         self,
         planner_type: str = "LEGACY_APF",
         max_vel: float = 2.5,
-        max_acc: float = 4.0,
+        max_acc: float = 5.0,
         kp_linear: float = 2.0,
         kp_angular: float = 2.0,
         max_angular_vel: float = 5.0,
@@ -144,11 +144,9 @@ class NavigationManager:
         # 4. Extração e separação de obstáculos circulares e zonas proibidas
         parsed_obs, forbidden_zones = self._parse_obstacles_and_zones(obstacles)
 
-        # 5. Tratamento de Unstuck / Projeção de Partida e Meta fora dos obstáculos
+        # 5. Tratamento de Unstuck para partida (se robô sofreu colisão/tranco)
         safe_start_x, safe_start_y = self._project_if_inside_obstacle(robot_x, robot_y, parsed_obs)
-        safe_goal_x, safe_goal_y = self._project_if_inside_obstacle(
-            clamped_target_x, clamped_target_y, parsed_obs, reference_point=(robot_x, robot_y)
-        )
+        safe_goal_x, safe_goal_y = clamped_target_x, clamped_target_y
 
         # 6. Planejamento Geométrico
         start_pos = (safe_start_x, safe_start_y)
@@ -262,10 +260,10 @@ class NavigationManager:
 
         forbidden_zones: List[Dict[str, float]] = []
         if has_defense_walls:
-            # Grande Área Esquerda (Nossa defesa): X de -6.0 a -4.8, Y de -1.2 a 1.2
-            forbidden_zones.append({'xmin': -6.0, 'xmax': -4.8, 'ymin': -1.2, 'ymax': 1.2})
-            # Grande Área Direita (Inimiga): X de 4.8 a 6.0, Y de -1.2 a 1.2
-            forbidden_zones.append({'xmin': 4.8, 'xmax': 6.0, 'ymin': -1.2, 'ymax': 1.2})
+            # Grande Área Esquerda (Nossa defesa): X de -6.0 a -5.0, Y de -1.2 a 1.2
+            forbidden_zones.append({'xmin': -6.0, 'xmax': -5.0, 'ymin': -1.2, 'ymax': 1.2})
+            # Grande Área Direita (Inimiga): X de 5.0 a 6.0, Y de -1.2 a 1.2
+            forbidden_zones.append({'xmin': 5.0, 'xmax': 6.0, 'ymin': -1.2, 'ymax': 1.2})
 
         return parsed_obs, forbidden_zones
 
