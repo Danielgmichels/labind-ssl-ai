@@ -17,6 +17,11 @@ if PROJECT_ROOT not in sys.path:
 if PROTO_MSGS_DIR not in sys.path:
     sys.path.append(PROTO_MSGS_DIR)
 
+# Auto-injeção das dependências do ambiente virtual local (.venv), garantindo acesso a zmq, matplotlib, etc.
+venv_site_packages = os.path.join(PROJECT_ROOT, ".venv", "lib", f"python{sys.version_info.major}.{sys.version_info.minor}", "site-packages")
+if os.path.isdir(venv_site_packages) and venv_site_packages not in sys.path:
+    sys.path.insert(0, venv_site_packages)
+
 from navigation.factory import get_path_planner, _PLANNER_REGISTRY
 
 
