@@ -254,7 +254,7 @@
               <Condition ID="ConditionIsOurPrepareKickoff"/>
               <Condition ID="ConditionIsEnemyPrepareKickoff"/>
             </Selector>
-            <Action ID="ActionPositionForKickoff" x_offset="4.5" y_offset="0.0"/>
+            <Action ID="ActionPositionForKickoff" x_offset="3.2" y_offset="0.0"/>
           </Sequence>
           <Sequence>
             <Condition ID="ConditionIsEnemyFreeKick"/>
@@ -358,7 +358,7 @@
               <Condition ID="ConditionIsOurPrepareKickoff"/>
               <Condition ID="ConditionIsEnemyPrepareKickoff"/>
             </Selector>
-            <Action ID="ActionPositionForKickoff" x_offset="5.0" y_offset="1.5"/>
+            <Action ID="ActionPositionForKickoff" x_offset="3.8" y_offset="1.5"/>
           </Sequence>
           <Sequence>
             <Condition ID="ConditionIsEnemyFreeKick"/>
@@ -386,7 +386,7 @@
               <Condition ID="ConditionIsOurPrepareKickoff"/>
               <Condition ID="ConditionIsEnemyPrepareKickoff"/>
             </Selector>
-            <Action ID="ActionPositionForKickoff" x_offset="5.0" y_offset="-1.5"/>
+            <Action ID="ActionPositionForKickoff" x_offset="3.8" y_offset="-1.5"/>
           </Sequence>
           <Sequence>
             <Condition ID="ConditionIsEnemyFreeKick"/>

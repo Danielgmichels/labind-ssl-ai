@@ -186,6 +186,12 @@ def plot_path_scenario(
         ax.plot(px, py, color="#00ffff", linewidth=2.5, linestyle="-", label="Caminho Planejado", zorder=5)
         ax.scatter(px, py, color="#ffffff", s=25, zorder=6)
 
+        # Se o caminho termina em um alvo projetado fora de uma zona proibida
+        dist_to_goal = math.hypot(path[-1][0] - goal[0], path[-1][1] - goal[1])
+        if dist_to_goal > 0.08:
+            ax.plot([path[-1][0], goal[0]], [path[-1][1], goal[1]], color="#ff8800", linestyle=":", linewidth=2.0, zorder=4)
+            ax.plot(path[-1][0], path[-1][1], marker="D", markersize=8, color="#00ffff", label="Espera Segura (Borda)", zorder=8)
+
     ax.set_title(title, fontsize=14, color="black", weight="bold")
     ax.legend(loc="upper right", framealpha=0.85)
 
@@ -368,6 +374,9 @@ if __name__ == "__main__":
             planner = get_path_planner(args.planner)
             path = planner.plan(start, goal, obstacles, forbidden_zones=forbidden_zones)
             print(f"[visualize_path] Rota calculada com sucesso usando '{args.planner.upper()}': {len(path)} waypoints")
+            if path and len(path) > 1 and math.hypot(path[-1][0] - goal[0], path[-1][1] - goal[1]) > 0.08:
+                print(f"[visualize_path] Aviso: O alvo {goal} está dentro de uma área proibida (defesa).")
+                print(f"[visualize_path] O planejador projetou o ponto final para a margem segura de espera em: ({path[-1][0]:.2f}, {path[-1][1]:.2f})")
         except Exception as e:
             print(f"[visualize_path] Erro no planejador '{args.planner}' ({e}). Usando reta baseline.")
             path = [start, goal]

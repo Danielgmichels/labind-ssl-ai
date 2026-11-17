@@ -162,6 +162,27 @@ class TestNavigationManager(unittest.TestCase):
         # Deve ter sido projetado para fora da margem de segurança (>= 0.22m)
         self.assertGreaterEqual(dist, 0.22)
 
+    def test_forbidden_zone_projection_in_manager(self):
+        mgr = NavigationManager(planner_type="LEGACY_APF")
+        forbidden_zones = [
+            {'xmin': -6.0, 'xmax': -4.2, 'ymin': -1.8, 'ymax': 1.8},
+            {'xmin': 4.2, 'xmax': 6.0, 'ymin': -1.8, 'ymax': 1.8}
+        ]
+
+        # Bola no fundo da área adversária (5.5, 0.0) -> projeta para borda frontal em 4.0
+        gx, gy = mgr._project_if_inside_forbidden_zone(5.5, 0.0, forbidden_zones)
+        self.assertAlmostEqual(gx, 4.0, places=2)
+        self.assertAlmostEqual(gy, 0.0, places=2)
+
+        # Bola perto da quina lateral da área (5.5, 1.7) -> projeta para borda lateral em 2.0
+        gx_lat, gy_lat = mgr._project_if_inside_forbidden_zone(5.5, 1.7, forbidden_zones)
+        self.assertAlmostEqual(gx_lat, 5.5, places=2)
+        self.assertAlmostEqual(gy_lat, 2.0, places=2)
+
+        # Bola no meio do campo (0.0, 0.0) -> inalterada
+        gx_mid, gy_mid = mgr._project_if_inside_forbidden_zone(0.0, 0.0, forbidden_zones)
+        self.assertEqual((gx_mid, gy_mid), (0.0, 0.0))
+
 
 class TestBenchmarkLogger(unittest.TestCase):
     def test_logger_creates_valid_csv(self):
@@ -388,6 +409,34 @@ class TestCircularVisibilityGraphPlanner(unittest.TestCase):
         self.assertGreaterEqual(len(path), 2)
         self.assertAlmostEqual(path[-1][0], 0.0, places=2)
         self.assertAlmostEqual(path[-1][1], 0.0, places=2)
+
+    def test_forbidden_zone_goal_inside_box_projects_safely(self):
+        """Testa se bola dentro da área proibida faz o planejador desviar dos robôs e parar na borda segura."""
+        start = (-3.9, -0.3)
+        goal = (4.43, -0.91)  # Bola dentro da grande área (X: 4.2 a 6.0, Y: -1.8 a 1.8)
+        forbidden_zones = [
+            {'xmin': -6.0, 'xmax': -4.2, 'ymin': -1.8, 'ymax': 1.8},
+            {'xmin': 4.2, 'xmax': 6.0, 'ymin': -1.8, 'ymax': 1.8}
+        ]
+        obstacles = [
+            {'x': 0.7, 'y': -0.2, 'radius': 0.09},
+            {'x': 1.0, 'y': -0.8, 'radius': 0.09},
+            {'x': 2.0, 'y': -0.5, 'radius': 0.09},
+        ]
+        path = self.planner.plan(start, goal, obstacles, forbidden_zones)
+
+        # Não deve retornar uma simples reta de 2 pontos cortando os obstáculos
+        self.assertGreater(len(path), 2)
+        self.assertEqual(path[0], start)
+        # O ponto final deve ser projetado para a borda frontal segura fora da área (x <= 4.05)
+        self.assertLessEqual(path[-1][0], 4.05)
+        self.assertAlmostEqual(path[-1][1], -0.91, places=2)
+
+        # Nenhum waypoint deve invadir a área de defesa
+        for pt in path:
+            x, y = pt
+            inside_box = (4.2 <= x <= 6.0) and (-1.8 <= y <= 1.8)
+            self.assertFalse(inside_box, f"Waypoint {pt} invadiu a área de defesa!")
 
 
 if __name__ == "__main__":

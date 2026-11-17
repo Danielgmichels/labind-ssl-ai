@@ -278,15 +278,22 @@ class NavigationManager:
     ) -> Tuple[float, float]:
         """Projeta a meta para fora da grande área caso um jogador de linha tenha sido ordenado para dentro dela."""
         for zone in forbidden_zones:
-            if (zone['xmin'] <= gx <= zone['xmax']) and (zone['ymin'] <= gy <= zone['ymax']):
-                # Projeta para a borda frontal mais próxima no eixo X
-                if abs(gx - zone['xmax']) < abs(gx - zone['xmin']):
-                    gx = zone['xmax'] + margin
-                else:
-                    gx = zone['xmin'] - margin
-                # Satura nos limites navegáveis de campo
-                gx = max(self.FIELD_X_MIN, min(gx, self.FIELD_X_MAX))
-                gy = max(self.FIELD_Y_MIN, min(gy, self.FIELD_Y_MAX))
+            xmin, xmax = zone['xmin'], zone['xmax']
+            ymin, ymax = zone['ymin'], zone['ymax']
+            if (xmin <= gx <= xmax) and (ymin <= gy <= ymax):
+                candidates = []
+                # Borda frontal em direção ao centro de campo
+                if xmax >= 4.0:
+                    candidates.append((xmin - margin, gy))
+                if xmin <= -4.0:
+                    candidates.append((xmax + margin, gy))
+                # Bordas laterais superior e inferior
+                candidates.append((gx, ymax + margin))
+                candidates.append((gx, ymin - margin))
+
+                best_pt = min(candidates, key=lambda c: (c[0] - gx)**2 + (c[1] - gy)**2)
+                gx = max(self.FIELD_X_MIN, min(best_pt[0], self.FIELD_X_MAX))
+                gy = max(self.FIELD_Y_MIN, min(best_pt[1], self.FIELD_Y_MAX))
         return gx, gy
 
     def _project_if_inside_obstacle(

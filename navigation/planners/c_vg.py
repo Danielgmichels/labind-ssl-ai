@@ -42,9 +42,12 @@ class CircularVisibilityGraphPlanner(IPathPlanner):
         # 1. Pré-processamento e extração de círculos inflados válidos
         circles = self._extract_inflated_circles(obstacles, goal_pos=goal_pos)
 
-        # 2. Desatolamento se start ou goal estiverem dentro de algum círculo
+        # 2. Desatolamento se start ou goal estiverem dentro de algum círculo ou zona proibida
         start = self._unstuck_point(start_pos, circles)
         goal = self._unstuck_point(goal_pos, circles, ref_point=start, is_goal=True)
+        if forbidden_zones:
+            start = self._project_point_out_of_zones(start, forbidden_zones)
+            goal = self._project_point_out_of_zones(goal, forbidden_zones)
 
         # 3. OTIMIZAÇÃO LAZY: Se a reta direta estiver livre, retorna imediatamente em O(N)!
         if not self._is_segment_blocked(start, goal, circles, forbidden_zones):
@@ -81,7 +84,7 @@ class CircularVisibilityGraphPlanner(IPathPlanner):
         path = self._astar_search(0, 1, nodes, adj)
 
         if not path:
-            return [start, goal]
+            return [start]
 
         return path
 
@@ -141,6 +144,36 @@ class CircularVisibilityGraphPlanner(IPathPlanner):
                 px = cx + nx * (r + 0.01)
                 py = cy + ny * (r + 0.01)
         return px, py
+
+    def _project_point_out_of_zones(
+        self,
+        point: Tuple[float, float],
+        forbidden_zones: List[Dict[str, float]],
+        margin: float = 0.20
+    ) -> Tuple[float, float]:
+        """
+        Se o ponto estiver dentro de uma área proibida (ex: bola na grande área),
+        projeta analiticamente para a borda navegável externa mais próxima no campo.
+        """
+        px, py = point
+        for zone in forbidden_zones:
+            xmin, xmax = zone['xmin'], zone['xmax']
+            ymin, ymax = zone['ymin'], zone['ymax']
+            if (xmin <= px <= xmax) and (ymin <= py <= ymax):
+                candidates = []
+                # Borda frontal em direção ao meio de campo
+                if xmax >= 4.0:
+                    candidates.append((xmin - margin, py))
+                if xmin <= -4.0:
+                    candidates.append((xmax + margin, py))
+                # Bordas laterais superior e inferior
+                candidates.append((px, ymax + margin))
+                candidates.append((px, ymin - margin))
+
+                best_pt = min(candidates, key=lambda c: (c[0] - px)**2 + (c[1] - py)**2)
+                px = max(-5.80, min(5.80, best_pt[0]))
+                py = max(-4.30, min(4.30, best_pt[1]))
+        return (px, py)
 
     def _filter_relevant_circles(
         self,
@@ -571,6 +604,9 @@ class CircularVisibilityGraphPlanner(IPathPlanner):
         heap = [(h0, 0.0, start_id, [start_pos])]
         g_scores = {start_id: 0.0}
 
+        best_path = [start_pos]
+        best_dist = h0
+
         while heap:
             f, g, curr, path_so_far = heapq.heappop(heap)
 
@@ -579,6 +615,12 @@ class CircularVisibilityGraphPlanner(IPathPlanner):
 
             if g > g_scores.get(curr, float('inf')):
                 continue
+
+            curr_pos = nodes[curr]
+            curr_dist = math.hypot(goal_pos[0] - curr_pos[0], goal_pos[1] - curr_pos[1])
+            if curr_dist < best_dist:
+                best_dist = curr_dist
+                best_path = path_so_far
 
             for neighbor_id, edge_cost, edge_waypoints in adj.get(curr, []):
                 new_g = g + edge_cost
@@ -591,4 +633,9 @@ class CircularVisibilityGraphPlanner(IPathPlanner):
                     new_path = path_so_far + edge_waypoints
                     heapq.heappush(heap, (new_f, new_g, neighbor_id, new_path))
 
-        return []
+        # Se a meta final for estritamente inalcançável (ex: robô cercado),
+        # retorna a melhor rota até o nó mais próximo da meta já explorado
+        if len(best_path) > 1:
+            return best_path
+
+        return [start_pos]
