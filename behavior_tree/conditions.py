@@ -51,20 +51,42 @@ class ConditionIsEnemyPrepareKickoff(Node):
 # NÓS DE CONDIÇÃO (Ofensivas)
 # ==========================================
 class ConditionIsNearBall(Node):
-    """Retorna SUCCESS se o robô estiver com a posse de bola (muito perto dela)."""
+    """
+    Retorna SUCCESS se o robô estiver com a posse de bola consolidada:
+    1. Distância ao centro do robô compatível com o alcance do rolete (< 15cm);
+    2. A bola está alinhada à frente do robô (no cone do dribbler +-50 graus);
+    3. Nenhum adversário está mais próximo da bola (evita confundir desarme com posse).
+    """
     def tick(self, blackboard):
         if blackboard.my_pos is None or blackboard.ball_pos is None:
             return NodeState.FAILURE
-            
-        # Calcula a distância exata até a bola[cite: 1]
-        dist = math.hypot(blackboard.ball_pos.x - blackboard.my_pos.pos.x,
-                          blackboard.ball_pos.y - blackboard.my_pos.pos.y)
-                          
-        # Aquele nosso limite de 12cm que já estava funcionando bem[cite: 1]
-        if dist < 0.12:
-            return NodeState.SUCCESS
-            
-        return NodeState.FAILURE
+
+        dx = blackboard.ball_pos.x - blackboard.my_pos.pos.x
+        dy = blackboard.ball_pos.y - blackboard.my_pos.pos.y
+        dist = math.hypot(dx, dy)
+
+        # Alcance físico do robô SSL com bola encostada no bico
+        if dist > 0.16:
+            return NodeState.FAILURE
+
+        # Verifica se a bola está à frente do robô (cone do dribbler frontal)
+        angle_to_ball = math.atan2(dy, dx)
+        diff_angle = (angle_to_ball - blackboard.my_pos.yaw + math.pi) % (2.0 * math.pi) - math.pi
+        if abs(diff_angle) > math.radians(50.0):
+            return NodeState.FAILURE
+
+        # Verifica se um adversário está mais perto da bola (situação de desarme/combate)
+        enemies = getattr(blackboard, 'enemies', [])
+        for enemy in enemies:
+            if abs(enemy.pos.x) < 0.001 and abs(enemy.pos.y) < 0.001:
+                continue
+            dist_enemy_to_ball = math.hypot(enemy.pos.x - blackboard.ball_pos.x,
+                                            enemy.pos.y - blackboard.ball_pos.y)
+            if dist_enemy_to_ball < (dist - 0.02):
+                # Adversário está mais perto da bola; nós estamos dando o bote/desarme
+                return NodeState.FAILURE
+
+        return NodeState.SUCCESS
 
 class ConditionIsInShootingZone(Node):
     """Retorna SUCCESS se o robô estiver a menos de 4 metros do gol inimigo."""

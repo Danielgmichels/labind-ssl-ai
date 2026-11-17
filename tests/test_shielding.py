@@ -99,6 +99,42 @@ class TestConditionIsUnderPressure(unittest.TestCase):
         self.assertEqual(self.bb.threatening_enemy.id, 8)
 
 
+class TestConditionIsNearBallPossession(unittest.TestCase):
+    def setUp(self):
+        self.controller = ProportionalController(2.0, 2.0, 2.5, 5.0)
+        self.action_client = MockActionClient()
+        self.bb = Blackboard(self.controller, self.action_client)
+        self.bb.my_pos = MockRobotPos(0.0, 0.0, yaw=0.0, r_id=1)
+        self.cond = ConditionIsNearBall()
+
+    def test_ball_in_front_dribbler_has_possession(self):
+        # Bola a 10cm diretamente à frente do robô (yaw=0)
+        self.bb.ball_pos = type('Ball', (), {'x': 0.10, 'y': 0.0})()
+        self.bb.enemies = []
+
+        status = self.cond.tick(self.bb)
+        self.assertEqual(status, NodeState.SUCCESS)
+
+    def test_ball_behind_robot_has_no_possession(self):
+        # Bola a 10cm atrás do robô (yaw=0)
+        self.bb.ball_pos = type('Ball', (), {'x': -0.10, 'y': 0.0})()
+        self.bb.enemies = []
+
+        status = self.cond.tick(self.bb)
+        self.assertEqual(status, NodeState.FAILURE)
+
+    def test_adversary_closer_to_ball_denies_possession(self):
+        # Bola a 12cm à frente do nosso robô (em 0.12, 0.0)
+        # Adversário em (0.16, 0.0), a apenas 4cm da bola
+        self.bb.ball_pos = type('Ball', (), {'x': 0.12, 'y': 0.0})()
+        enemy = MockRobotPos(0.16, 0.0, r_id=9)
+        self.bb.enemies = [enemy]
+
+        status = self.cond.tick(self.bb)
+        # Deve falhar para que o robô faça o desarme frontal ao invés de virar de costas
+        self.assertEqual(status, NodeState.FAILURE)
+
+
 class TestActionShieldBall(unittest.TestCase):
     def setUp(self):
         self.controller = ProportionalController(2.0, 2.0, 2.5, 5.0)

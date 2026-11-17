@@ -270,42 +270,74 @@ class ActionShieldBall(Node):
         dy_enemy = threatening_enemy.pos.y - blackboard.my_pos.pos.y
         angulo_adversario = math.atan2(dy_enemy, dx_enemy)
 
-        # Target Yaw: Oposto ao adversário (+ pi) para virar a carcaça traseira contra ele
-        target_yaw = (angulo_adversario + math.pi + math.pi) % (2 * math.pi) - math.pi
+        # Target Yaw: Traseira apontada para o adversário (frente apontando no sentido oposto angulo_adversario + pi)
+        # Coloca a massa de metal do robô entre a bola (no rolete frontal) e o marcador
+        target_yaw = (angulo_adversario) % (2.0 * math.pi) - math.pi
 
-        # 4. Evasão Tangencial (Escape Perpendicular ao Adversário)
-        tangente_1 = angulo_adversario + (math.pi / 2.0)
-        tangente_2 = angulo_adversario - (math.pi / 2.0)
+        # 4. Evasão Ativa com Condução para Espaço Aberto (Fuga da Pressão)
+        # Gera múltiplos vetores candidatos (oblíquo-traseiro, tangenciais e evasão direta)
+        angulos_fuga = [
+            angulo_adversario + math.pi,                # Direto para trás do adversário (180 deg)
+            angulo_adversario + (2.0 * math.pi / 3.0),  # Oblíquo afastando (+120 deg)
+            angulo_adversario - (2.0 * math.pi / 3.0),  # Oblíquo afastando (-120 deg)
+            angulo_adversario + (math.pi / 2.0),        # Tangencial puro (+90 deg)
+            angulo_adversario - (math.pi / 2.0),        # Tangencial puro (-90 deg)
+        ]
 
-        # Projeta pontos candidatos
-        cand1_x = blackboard.my_pos.pos.x + tangent_dist * math.cos(tangente_1)
-        cand1_y = blackboard.my_pos.pos.y + tangent_dist * math.sin(tangente_1)
+        dist_fuga = max(tangent_dist, 0.80)
+        best_target = None
+        best_score = -float('inf')
 
-        cand2_x = blackboard.my_pos.pos.x + tangent_dist * math.cos(tangente_2)
-        cand2_y = blackboard.my_pos.pos.y + tangent_dist * math.sin(tangente_2)
-
-        score1 = 0.0
-        score2 = 0.0
-
-        if abs(cand1_y) < field_margin_y: score1 += 1.0
-        if abs(cand2_y) < field_margin_y: score2 += 1.0
-
-        # Favorece progredir levemente ao ataque se houver espaço
         direcao_ataque = 1.0 if blackboard.enemy_goal_x > 0 else -1.0
-        if (cand1_x - blackboard.my_pos.pos.x) * direcao_ataque > 0: score1 += 0.5
-        if (cand2_x - blackboard.my_pos.pos.x) * direcao_ataque > 0: score2 += 0.5
+        enemies = getattr(blackboard, 'enemies', [])
 
-        if score1 >= score2:
-            alvo_x, alvo_y = cand1_x, cand1_y
+        for ang_cand in angulos_fuga:
+            cx = blackboard.my_pos.pos.x + dist_fuga * math.cos(ang_cand)
+            cy = blackboard.my_pos.pos.y + dist_fuga * math.sin(ang_cand)
+
+            # Filtra pontos fora dos limites de campo
+            if abs(cy) > field_margin_y or abs(cx) > 5.5:
+                continue
+
+            score = 0.0
+            # Bonifica progressão ofensiva se o caminho estiver limpo
+            if (cx - blackboard.my_pos.pos.x) * direcao_ataque > 0:
+                score += 0.8
+
+            # Bonifica distância em relação a todos os adversários
+            min_dist_other = float('inf')
+            for obs in enemies:
+                if abs(obs.pos.x) < 0.001 and abs(obs.pos.y) < 0.001:
+                    continue
+                d_obs = math.hypot(cx - obs.pos.x, cy - obs.pos.y)
+                if d_obs < min_dist_other:
+                    min_dist_other = d_obs
+            score += min_dist_other
+
+            if score > best_score:
+                best_score = score
+                best_target = (cx, cy)
+
+        if best_target is not None:
+            alvo_x, alvo_y = best_target
         else:
-            alvo_x, alvo_y = cand2_x, cand2_y
+            # Fallback seguro: tangencial
+            alvo_x = blackboard.my_pos.pos.x + dist_fuga * math.cos(angulo_adversario + math.pi / 2.0)
+            alvo_y = blackboard.my_pos.pos.y + dist_fuga * math.sin(angulo_adversario + math.pi / 2.0)
 
         alvo_y = max(-field_margin_y, min(alvo_y, field_margin_y))
 
-        # 5. Navegação APF com Orientação Desacoplada
+        # Filtra o adversário colado para não congelar o planejador local por colisão aparente
+        threat_id = getattr(threatening_enemy, 'id', None)
+        obstacles_filtered = [
+            obs for obs in blackboard.obstacles
+            if getattr(obs, 'id', None) != threat_id
+        ]
+
+        # 5. Navegação com Orientação Desacoplada
         vf, vl, vw = blackboard.controller.calculate_velocity(
             blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw,
-            alvo_x, alvo_y, blackboard.obstacles, target_yaw=target_yaw
+            alvo_x, alvo_y, obstacles_filtered, target_yaw=target_yaw
         )
 
         blackboard.action.send_command(
