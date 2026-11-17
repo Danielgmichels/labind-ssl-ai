@@ -48,17 +48,17 @@ def draw_ssl_field(ax, field_length: float = 12.0, field_width: float = 9.0):
     ax.add_patch(center_circle)
     ax.plot(0, 0, marker="o", markersize=4, color="white", zorder=2)
 
-    # Áreas de Defesa (Retângulos padrão SSL: 1.0m profundidade x 2.4m largura)
-    # Área Esquerda
+    # Áreas de Defesa (Retângulos padrão SSL Divisão A: 1.8m profundidade x 3.6m largura)
+    # Área Esquerda (X de -6.0 a -4.2, Y de -1.8 a 1.8)
     area_left = patches.Rectangle(
-        (-half_l, -1.2), 1.0, 2.4,
+        (-half_l, -1.8), 1.8, 3.6,
         linewidth=2, edgecolor="white", facecolor="none", zorder=2
     )
     ax.add_patch(area_left)
 
-    # Área Direita
+    # Área Direita (X de 4.2 a 6.0, Y de -1.8 a 1.8)
     area_right = patches.Rectangle(
-        (half_l - 1.0, -1.2), 1.0, 2.4,
+        (half_l - 1.8, -1.8), 1.8, 3.6,
         linewidth=2, edgecolor="white", facecolor="none", zorder=2
     )
     ax.add_patch(area_right)
@@ -255,8 +255,8 @@ if __name__ == "__main__":
     team_name = "Azul" if is_blue_selected else "Amarelo"
 
     forbidden_zones = [
-        {'xmin': -6.0, 'xmax': -5.0, 'ymin': -1.2, 'ymax': 1.2},
-        {'xmin': 5.0, 'xmax': 6.0, 'ymin': -1.2, 'ymax': 1.2}
+        {'xmin': -6.0, 'xmax': -4.2, 'ymin': -1.8, 'ymax': 1.8},
+        {'xmin': 4.2, 'xmax': 6.0, 'ymin': -1.8, 'ymax': 1.8}
     ]
 
     ball_pos = None

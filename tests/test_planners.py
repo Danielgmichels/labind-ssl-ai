@@ -110,9 +110,9 @@ class TestNavigationManager(unittest.TestCase):
 
         # As ~86 paredes devem ter sido agrupadas em 2 caixas retangulares
         self.assertEqual(len(forbidden_zones), 2)
-        # Nossos limites de defesa: -6.0 a -5.0 e 5.0 a 6.0
-        self.assertIn({'xmin': -6.0, 'xmax': -5.0, 'ymin': -1.2, 'ymax': 1.2}, forbidden_zones)
-        self.assertIn({'xmin': 5.0, 'xmax': 6.0, 'ymin': -1.2, 'ymax': 1.2}, forbidden_zones)
+        # Nossos limites de defesa Divisão A: -6.0 a -4.2 e 4.2 a 6.0 (largura +-1.8)
+        self.assertIn({'xmin': -6.0, 'xmax': -4.2, 'ymin': -1.8, 'ymax': 1.8}, forbidden_zones)
+        self.assertIn({'xmin': 4.2, 'xmax': 6.0, 'ymin': -1.8, 'ymax': 1.8}, forbidden_zones)
 
     def test_multi_robot_context_isolation(self):
         @register_path_planner("TEST_DUMMY_MULTI")
@@ -357,11 +357,11 @@ class TestCircularVisibilityGraphPlanner(unittest.TestCase):
 
     def test_forbidden_zone_penalty_box_circumvention(self):
         """Testa se o C-VG contorna perfeitamente a área do goleiro sem penetrá-la."""
-        # Ponto de partida acima da grande área e chegada abaixo dela (cortando o X da área em -5.5)
-        start = (-5.5, 1.8)
-        goal = (-5.5, -1.8)
-        # Área do goleiro: X de -6.0 a -5.0, Y de -1.2 a 1.2
-        forbidden_zones = [{'xmin': -6.0, 'xmax': -5.0, 'ymin': -1.2, 'ymax': 1.2}]
+        # Ponto de partida acima da grande área e chegada abaixo dela (cortando o X da área em -5.0)
+        start = (-5.0, 2.5)
+        goal = (-5.0, -2.5)
+        # Área do goleiro: X de -6.0 a -4.2, Y de -1.8 a 1.8
+        forbidden_zones = [{'xmin': -6.0, 'xmax': -4.2, 'ymin': -1.8, 'ymax': 1.8}]
 
         path = self.planner.plan(start, goal, obstacles=[], forbidden_zones=forbidden_zones)
 
@@ -372,7 +372,7 @@ class TestCircularVisibilityGraphPlanner(unittest.TestCase):
         # Nenhum ponto do caminho deve entrar na área do goleiro (com margem de segurança)
         for pt in path:
             x, y = pt
-            inside_box = (-6.0 <= x <= -5.0) and (-1.2 <= y <= 1.2)
+            inside_box = (-6.0 <= x <= -4.2) and (-1.8 <= y <= 1.8)
             self.assertFalse(inside_box, f"Waypoint {pt} violou o limite da grande área!")
 
     def test_contested_ball_kickoff_reaches_goal(self):

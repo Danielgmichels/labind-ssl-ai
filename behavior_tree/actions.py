@@ -102,16 +102,16 @@ class ActionGoToBall(Node):
             return NodeState.RUNNING
         
         # Proteção de Geofencing: Se a bola rolou pra dentro da área
-        # (Lembrando que o campo longo vai até -6.0 e 6.0, com a área até -5.0 e 5.0)
-        na_area_esq = (-6.0 <= alvo_x <= -5.0) and (-1.5 <= alvo_y <= 1.5)
-        na_area_dir = (5.0 <= alvo_x <= 6.0) and (-1.5 <= alvo_y <= 1.5)
+        # (Campo de 12x9m com grande área da Divisão A: X de -6.0 a -4.2 e 4.2 a 6.0, Y de -1.8 a 1.8)
+        na_area_esq = (-6.0 <= alvo_x <= -4.2) and (-1.8 <= alvo_y <= 1.8)
+        na_area_dir = (4.2 <= alvo_x <= 6.0) and (-1.8 <= alvo_y <= 1.8)
         
         if na_area_esq:
-            alvo_x = -4.8
-            alvo_y = max(-1.2, min(alvo_y, 1.2))
+            alvo_x = -4.0
+            alvo_y = max(-1.8, min(alvo_y, 1.8))
         elif na_area_dir:
-            alvo_x = 4.8
-            alvo_y = max(-1.2, min(alvo_y, 1.2))
+            alvo_x = 4.0
+            alvo_y = max(-1.8, min(alvo_y, 1.8))
 
 
         # APF para calcular o caminho, desviando de robôs e das paredes virtuais
@@ -769,8 +769,14 @@ class ActionZagueiroBloqueio(Node):
         velocidade_chute = 0.0
         velocidade_driblador = 0.0
 
-        # 1. INSTINTO DE DEFESA (Bola invadiu a zona de 60cm dele)
-        if dist_bola < 0.60:
+        # 1. INSTINTO DE DEFESA (Bola invadiu a zona de 60cm dele, desde que fora da nossa grande área)
+        na_nossa_area = (
+            (-6.0 <= blackboard.ball_pos.x <= -4.2 and -1.8 <= blackboard.ball_pos.y <= 1.8)
+            if blackboard.our_goal_x < 0 else
+            (4.2 <= blackboard.ball_pos.x <= 6.0 and -1.8 <= blackboard.ball_pos.y <= 1.8)
+        )
+
+        if dist_bola < 0.60 and not na_nossa_area:
             # Abandona a linha da barreira e ataca a bola de frente!
             alvo_x = blackboard.ball_pos.x
             alvo_y = blackboard.ball_pos.y
@@ -785,10 +791,19 @@ class ActionZagueiroBloqueio(Node):
             dy = blackboard.ball_pos.y - 0.0
             angulo_bola = math.atan2(dy, dx)
             
-            raio_zaga = 2.0 # Fica seguro fora da grande área
+            # Raio de segurança cobrindo a diagonal da grande área (sqrt(1.8^2 + 1.8^2) = ~2.55m)
+            raio_zaga = 2.70 # Fica seguro fora da grande área em qualquer ângulo
             
             alvo_x = blackboard.our_goal_x + raio_zaga * math.cos(angulo_bola)
             alvo_y = 0.0 + raio_zaga * math.sin(angulo_bola)
+
+        # Geofence de segurança rígida: zagueiro nunca invade a grande área
+        if blackboard.our_goal_x < 0:
+            if alvo_x < -4.0 and abs(alvo_y) < 2.0:
+                alvo_x = -4.0
+        else:
+            if alvo_x > 4.0 and abs(alvo_y) < 2.0:
+                alvo_x = 4.0
         
         # 3. Navegação com APF
         vf, vl, _ = blackboard.controller.calculate_velocity(
@@ -850,9 +865,17 @@ class ActionZagueiroMarcacao(Node):
                 alvo_x = inimigo_perigoso.pos.x
                 alvo_y = inimigo_perigoso.pos.y
         else:
-            # Fallback (Se não tiver inimigos no simulador): Fica do lado da área
-            alvo_x = -4.5
+            # Fallback (Se não tiver inimigos no simulador): Fica à frente da grande área
+            alvo_x = -4.0 if blackboard.our_goal_x < 0 else 4.0
             alvo_y = -1.0
+
+        # Geofence de segurança rígida: nunca entra na grande área para marcar
+        if blackboard.our_goal_x < 0:
+            if alvo_x < -4.0 and abs(alvo_y) < 2.0:
+                alvo_x = -4.0
+        else:
+            if alvo_x > 4.0 and abs(alvo_y) < 2.0:
+                alvo_x = 4.0
 
         # Navega com APF
         vf, vl, vw = blackboard.controller.calculate_velocity(
@@ -1048,6 +1071,14 @@ class ActionFormDefensiveWall(Node):
         # Aplica o espaçamento para criar o "muro"
         alvo_x = centro_x + (perp_x * self.offset_lateral)
         alvo_y = centro_y + (perp_y * self.offset_lateral)
+
+        # Geofence de segurança: barreira nunca entra na nossa grande área
+        if blackboard.our_goal_x < 0:
+            if alvo_x < -4.0 and abs(alvo_y) < 2.0:
+                alvo_x = -4.0
+        else:
+            if alvo_x > 4.0 and abs(alvo_y) < 2.0:
+                alvo_x = 4.0
 
         # 4. Navegação usando nosso APF
         vf, vl, _ = blackboard.controller.calculate_velocity(

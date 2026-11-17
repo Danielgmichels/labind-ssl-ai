@@ -144,9 +144,11 @@ class NavigationManager:
         # 4. Extração e separação de obstáculos circulares e zonas proibidas
         parsed_obs, forbidden_zones = self._parse_obstacles_and_zones(obstacles)
 
-        # 5. Tratamento de Unstuck para partida (se robô sofreu colisão/tranco)
+        # 5. Tratamento de Unstuck para partida e proteção da grande área
         safe_start_x, safe_start_y = self._project_if_inside_obstacle(robot_x, robot_y, parsed_obs)
-        safe_goal_x, safe_goal_y = clamped_target_x, clamped_target_y
+        safe_goal_x, safe_goal_y = self._project_if_inside_forbidden_zone(
+            clamped_target_x, clamped_target_y, forbidden_zones
+        )
 
         # 6. Planejamento Geométrico
         start_pos = (safe_start_x, safe_start_y)
@@ -260,12 +262,32 @@ class NavigationManager:
 
         forbidden_zones: List[Dict[str, float]] = []
         if has_defense_walls:
-            # Grande Área Esquerda (Nossa defesa): X de -6.0 a -5.0, Y de -1.2 a 1.2
-            forbidden_zones.append({'xmin': -6.0, 'xmax': -5.0, 'ymin': -1.2, 'ymax': 1.2})
-            # Grande Área Direita (Inimiga): X de 5.0 a 6.0, Y de -1.2 a 1.2
-            forbidden_zones.append({'xmin': 5.0, 'xmax': 6.0, 'ymin': -1.2, 'ymax': 1.2})
+            # Grande Área Esquerda (Nossa defesa): X de -6.0 a -4.2, Y de -1.8 a 1.8
+            forbidden_zones.append({'xmin': -6.0, 'xmax': -4.2, 'ymin': -1.8, 'ymax': 1.8})
+            # Grande Área Direita (Inimiga): X de 4.2 a 6.0, Y de -1.8 a 1.8
+            forbidden_zones.append({'xmin': 4.2, 'xmax': 6.0, 'ymin': -1.8, 'ymax': 1.8})
 
         return parsed_obs, forbidden_zones
+
+    def _project_if_inside_forbidden_zone(
+        self,
+        gx: float,
+        gy: float,
+        forbidden_zones: List[Dict[str, float]],
+        margin: float = 0.20
+    ) -> Tuple[float, float]:
+        """Projeta a meta para fora da grande área caso um jogador de linha tenha sido ordenado para dentro dela."""
+        for zone in forbidden_zones:
+            if (zone['xmin'] <= gx <= zone['xmax']) and (zone['ymin'] <= gy <= zone['ymax']):
+                # Projeta para a borda frontal mais próxima no eixo X
+                if abs(gx - zone['xmax']) < abs(gx - zone['xmin']):
+                    gx = zone['xmax'] + margin
+                else:
+                    gx = zone['xmin'] - margin
+                # Satura nos limites navegáveis de campo
+                gx = max(self.FIELD_X_MIN, min(gx, self.FIELD_X_MAX))
+                gy = max(self.FIELD_Y_MIN, min(gy, self.FIELD_Y_MAX))
+        return gx, gy
 
     def _project_if_inside_obstacle(
         self,

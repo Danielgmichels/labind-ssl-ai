@@ -21,14 +21,14 @@ def generate_free_space_candidates(world_model, blackboard, robot_id: int, side_
     goal_dir = 1.0 if goal_x > 0 else -1.0
 
     # Limites longitudinais: do meio-campo ligeiramente recuado até a entrada da grande área adversária
-    x_min = min(0.0, goal_dir * 1.0) if goal_dir > 0 else -4.8
-    x_max = 4.8 if goal_dir > 0 else max(0.0, goal_dir * 1.0)
+    x_min = min(0.0, goal_dir * 1.0) if goal_dir > 0 else -4.0
+    x_max = 4.0 if goal_dir > 0 else max(0.0, goal_dir * 1.0)
     
     # Se goal_dir for negativo (lado esquerdo):
     if goal_dir < 0:
-        x_start, x_end = -4.8, 1.0
+        x_start, x_end = -4.0, 1.0
     else:
-        x_start, x_end = -1.0, 4.8
+        x_start, x_end = -1.0, 4.0
 
     # Limites laterais:
     if side_y is not None and abs(side_y) > 0.1:
@@ -44,9 +44,9 @@ def generate_free_space_candidates(world_model, blackboard, robot_id: int, side_
     while curr_x <= x_end + 1e-4:
         curr_y = y_start
         while curr_y <= y_end + 1e-4:
-            # Exclusão de grande área
-            na_area_esq = (-6.0 <= curr_x <= -4.8) and (-1.4 <= curr_y <= 1.4)
-            na_area_dir = (4.8 <= curr_x <= 6.0) and (-1.4 <= curr_y <= 1.4)
+            # Exclusão de grande área (com margem de segurança de 20cm)
+            na_area_esq = (-6.0 <= curr_x <= -4.0) and (-2.0 <= curr_y <= 2.0)
+            na_area_dir = (4.0 <= curr_x <= 6.0) and (-2.0 <= curr_y <= 2.0)
 
             if not na_area_esq and not na_area_dir:
                 candidates.append(PositionCandidate(target_point=(round(curr_x, 2), round(curr_y, 2))))

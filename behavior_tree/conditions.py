@@ -229,11 +229,11 @@ class ConditionIsBallSafeToClear(Node):
         self.last_pos = blackboard.ball_pos
         self.last_time = current_time
         
-        # 2. Verifica se a bola está dentro da nossa área de defesa
+        # 2. Verifica se a bola está dentro da nossa área de defesa (Divisão A: X 1.8m, Y +-1.8m)
         if blackboard.our_goal_x > 0:
-            na_area = (4.5 <= blackboard.ball_pos.x <= 6.0) and (-1.5 <= blackboard.ball_pos.y <= 1.5)
+            na_area = (4.2 <= blackboard.ball_pos.x <= 6.0) and (-1.8 <= blackboard.ball_pos.y <= 1.8)
         else:
-            na_area = (-6.0 <= blackboard.ball_pos.x <= -4.5) and (-1.5 <= blackboard.ball_pos.y <= 1.5)
+            na_area = (-6.0 <= blackboard.ball_pos.x <= -4.2) and (-1.8 <= blackboard.ball_pos.y <= 1.8)
         
         # 3. A Regra de Ouro: Tá na área E tá lenta (menos de 1.2 m/s)? Limpa!
         if na_area and self.speed < 1.2:
