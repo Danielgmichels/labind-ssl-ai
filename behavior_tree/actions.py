@@ -209,17 +209,25 @@ class ActionShieldBall(Node):
     de drible da SSL Divisão A (máx 0.8m / 1.5s) antes de ceder a posse com FAILURE
     para ativar o passe de recuo.
     """
-    def __init__(self, max_duration=None, max_distance=None):
+    def __init__(self, max_duration=None, max_distance=None, cooldown=1.0):
         super().__init__()
         self.max_duration = max_duration
         self.max_distance = max_distance
+        self.cooldown = cooldown
         self.start_time = None
         self.start_x = None
         self.start_y = None
         self.last_tick_time = 0.0
+        self.last_timeout_time = 0.0
 
     def tick(self, blackboard):
         if blackboard.my_pos is None:
+            return NodeState.FAILURE
+
+        now = time.time()
+        # Trava de Cooldown: Se a blindagem atingiu o limite recentemente, força FAILURE
+        # para que o robô não entre em loop e seja obrigado a passar ou conduzir
+        if (now - self.last_timeout_time) < self.cooldown:
             return NodeState.FAILURE
 
         shield_cfg = TACTICAL_CONFIG.get("SHIELD", {})
@@ -229,7 +237,6 @@ class ActionShieldBall(Node):
         tangent_dist = shield_cfg.get("tangent_distance", 0.60)
         field_margin_y = shield_cfg.get("field_margin_y", 2.60)
 
-        now = time.time()
         # Reinicia odômetro se a ação foi interrompida por mais de 0.3s
         if self.start_time is None or (now - self.last_tick_time) > 0.3:
             self.start_time = now
@@ -242,8 +249,9 @@ class ActionShieldBall(Node):
         dist_percorrida = math.hypot(blackboard.my_pos.pos.x - self.start_x,
                                      blackboard.my_pos.pos.y - self.start_y)
 
-        # Se atingiu o limite de condução ou tempo, falha para liberar o passe de recuo
+        # Se atingiu o limite de condução ou tempo, ativa cooldown e falha para liberar o fluxo
         if elapsed_time > limit_duration or dist_percorrida > limit_distance:
+            self.last_timeout_time = now
             self.start_time = None
             return NodeState.FAILURE
 

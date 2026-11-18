@@ -22,20 +22,18 @@ def build_attacker_tree():
     
     receber_passe = Sequence([ConditionIsPassArriving(), ActionInterceptPass()])
     tentar_finalizar = Sequence([ConditionIsNearBall(), ConditionIsInShootingZone(), ConditionEvaluateShot(), ActionAimAndShoot()])
-    # 1. Se houver passe ofensivo para frente, executa para acelerar o ataque
-    tentar_passe_avancado = Sequence([ConditionIsNearBall(), ConditionEvaluatePass(only_forward=True), ActionPassBall()])
-    # 2. Se houver marcador pressionando a bola, ativa blindagem com o corpo (Body Shielding)
+    # 1. Se houver passe tático aprovado (alas livres, apoios ou frente com score >= 0.50), PASSA IMEDIATAMENTE
+    tentar_passe = Sequence([ConditionIsNearBall(), ConditionEvaluatePass(only_forward=False), ActionPassBall()])
+    # 2. Se houver marcador pressionando a bola e sem passe imediato, ativa blindagem com o corpo
     proteger_bola = Sequence([ConditionIsNearBall(), ConditionIsUnderPressure(), ActionShieldBall()])
-    # 3. Se livre de pressão, tenta achar ângulo lateralmente ou conduzir contra a barreira
+    # 3. Se livre de pressão (ou após blindar), tenta achar ângulo na área ou conduzir para o gol
     achar_angulo = Sequence([ConditionIsNearBall(), ConditionIsInShootingZone(), ActionFindShootingAngle()])
     tentar_conduzir = Sequence([ConditionIsNearBall(), ActionSmartDribble()])
-    # 4. Se a blindagem/busca de ângulo expirar ou não abrir brecha, autoriza o passe para trás (recuo)
-    tentar_passe_recuo = Sequence([ConditionIsNearBall(), ConditionEvaluatePass(only_forward=False), ActionPassBall()])
     buscar_bola = ActionGoToBall()
     
     ramo_ofensivo = Sequence([
         Selector([ConditionIsGameRunning(), ConditionIsOurFreeKick()]),
-        Selector([receber_passe, tentar_finalizar, tentar_passe_avancado, proteger_bola, achar_angulo, tentar_conduzir, tentar_passe_recuo, buscar_bola])
+        Selector([receber_passe, tentar_finalizar, tentar_passe, proteger_bola, achar_angulo, tentar_conduzir, buscar_bola])
     ])
 
     return Selector([ramo_emergencia, ramo_kickoff_nosso, ramo_kickoff_deles, Sequence([ConditionIsEnemyFreeKick(), ActionMarkEnemy(6)]), cobrar_falta, ramo_ofensivo])

@@ -36,7 +36,10 @@ class MockActionClient:
 class MockRobotPos:
     def __init__(self, x, y, yaw=0.0, r_id=1):
         self.id = r_id
+        self.x = x
+        self.y = y
         self.yaw = yaw
+        self.visible = True
         self.pos = type('Pos', (), {'x': x, 'y': y})()
 
 
@@ -202,6 +205,23 @@ class TestActionShieldBall(unittest.TestCase):
         status2 = action.tick(self.bb)
         self.assertEqual(status2, NodeState.FAILURE)
 
+    def test_shield_cooldown_prevents_immediate_reactivation(self):
+        # Atinge o timeout de blindagem
+        action = ActionShieldBall(max_duration=0.05, cooldown=0.5)
+        self.bb.threatening_enemy = MockRobotPos(0.4, 0.0, r_id=9)
+        self.bb.enemies = [self.bb.threatening_enemy]
+
+        status1 = action.tick(self.bb)
+        self.assertEqual(status1, NodeState.RUNNING)
+
+        time.sleep(0.06)
+        status_timeout = action.tick(self.bb)
+        self.assertEqual(status_timeout, NodeState.FAILURE)
+
+        # No ciclo imediatamente posterior, o cooldown deve barrar a reativação
+        status_cooldown = action.tick(self.bb)
+        self.assertEqual(status_cooldown, NodeState.FAILURE)
+
 
 class TestFindShootingAngleFrontalCheck(unittest.TestCase):
     def setUp(self):
@@ -233,7 +253,7 @@ class TestAttackerTreeIntegration(unittest.TestCase):
         self.bb.obstacles = []
         self.bb.referee_command = "RUNNING"
         self.bb.my_pos = MockRobotPos(2.0, 0.0, yaw=0.0, r_id=1)
-        self.bb.ball_pos = type('Ball', (), {'x': 2.05, 'y': 0.0, 'v_x': 0.0, 'v_y': 0.0})()
+        self.bb.ball_pos = type('Ball', (), {'x': 2.05, 'y': 0.0, 'v_x': 0.0, 'v_y': 0.0, 'visible': True})()
         self.tree = build_attacker_tree()
 
     def test_attacker_under_pressure_selects_shield_ball(self):
@@ -249,6 +269,35 @@ class TestAttackerTreeIntegration(unittest.TestCase):
         self.assertEqual(cmd["dribbler_speed"], 1500.0)
         # A velocidade angular deve estar girando para afastar a frente do adversário
         self.assertNotEqual(cmd["vw"], 0.0)
+
+    def test_attacker_prefers_open_pass_over_shielding(self):
+        # Atacante sob pressão de um adversário frontal (0.40m)
+        self.bb.enemies = [MockRobotPos(2.40, 0.0, r_id=9)]
+
+        # Mas há um companheiro desmarcado na ponta esquerda com linha limpa
+        apoio_esq = MockRobotPos(1.8, 2.0, r_id=2)
+        teammates = {1: self.bb.my_pos, 2: apoio_esq}
+        self.bb.team = teammates
+        self.bb.papeis = {1: "ATACANTE", 2: "ATACANTE_APOIO_ESQ"}
+
+        class MockWM:
+            def __init__(self, tm, opp, ball, goal_x):
+                self.tm = tm
+                self.opp = opp
+                self.ball = ball
+                self.field = type('F', (), {'enemy_goal_x': goal_x, 'our_goal_x': -goal_x})()
+            def get_robot(self, r_id): return self.tm.get(r_id)
+            def get_ball(self): return self.ball
+            def get_my_team(self): return self.tm
+            def get_opponent_team(self): return {9: MockRobotPos(2.40, 0.0, r_id=9)}
+
+        self.bb.world_model = MockWM(teammates, self.bb.enemies, self.bb.ball_pos, self.bb.enemy_goal_x)
+
+        status = self.tree.tick(self.bb)
+        self.assertEqual(status, NodeState.RUNNING)
+
+        # Deve escolher passar a bola para o apoio desmarcado (ID 2), não blindar!
+        self.assertEqual(getattr(self.bb, 'pass_target_robot', None), 2)
 
 
 if __name__ == '__main__':

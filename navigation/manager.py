@@ -80,8 +80,8 @@ class NavigationManager:
     def __init__(
         self,
         planner_type: str = "LEGACY_APF",
-        max_vel: float = 3.0,
-        max_acc: float = 5.0,
+        max_vel: float = 2.0,
+        max_acc: float = 3.0,
         kp_linear: float = 2.0,
         kp_angular: float = 2.0,
         max_angular_vel: float = 5.0,

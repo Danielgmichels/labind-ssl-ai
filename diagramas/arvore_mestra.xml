@@ -68,13 +68,13 @@
               </Sequence>
               <Sequence>
                 <Condition ID="ConditionIsNearBall"/>
-                <Condition ID="ConditionEvaluatePass" only_forward="True"/>
+                <Condition ID="ConditionEvaluatePass" only_forward="False"/>
                 <Action ID="ActionPassBall"/>
               </Sequence>
               <Sequence>
                 <Condition ID="ConditionIsNearBall"/>
                 <Condition ID="ConditionIsUnderPressure" danger_radius="None"/>
-                <Action ID="ActionShieldBall" max_duration="None" max_distance="None"/>
+                <Action ID="ActionShieldBall" max_duration="None" max_distance="None" cooldown="1.0"/>
               </Sequence>
               <Sequence>
                 <Condition ID="ConditionIsNearBall"/>
@@ -84,11 +84,6 @@
               <Sequence>
                 <Condition ID="ConditionIsNearBall"/>
                 <Action ID="ActionSmartDribble"/>
-              </Sequence>
-              <Sequence>
-                <Condition ID="ConditionIsNearBall"/>
-                <Condition ID="ConditionEvaluatePass" only_forward="False"/>
-                <Action ID="ActionPassBall"/>
               </Sequence>
               <Action ID="ActionGoToBall"/>
             </Selector>
