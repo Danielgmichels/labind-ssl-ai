@@ -98,6 +98,16 @@ class TestConditionIsUnderPressure(unittest.TestCase):
         self.assertEqual(status, NodeState.SUCCESS)
         self.assertEqual(self.bb.threatening_enemy.id, 8)
 
+    def test_enemy_in_rear_does_not_trigger_pressure(self):
+        # Adversário na retaguarda (costas do nosso robô: x = -0.50, yaw = 0.0)
+        # Mesmo estando a 50cm (dentro de 75cm), o filtro direcional deve ignorá-lo
+        enemy_behind = MockRobotPos(-0.50, 0.0, r_id=5)
+        self.bb.enemies = [enemy_behind]
+
+        status = self.cond.tick(self.bb)
+        self.assertEqual(status, NodeState.FAILURE)
+        self.assertIsNone(self.bb.threatening_enemy)
+
 
 class TestConditionIsNearBallPossession(unittest.TestCase):
     def setUp(self):

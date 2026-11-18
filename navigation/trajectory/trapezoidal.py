@@ -32,6 +32,7 @@ class TrapezoidalTrajectoryGenerator(ITrajectoryGenerator):
         self.max_angular_vel = max_angular_vel
         self.lookahead_dist = lookahead_dist
         self.dt = dt
+        self.current_speed = 0.0
 
     def compute_step(
         self,
@@ -52,11 +53,13 @@ class TrapezoidalTrajectoryGenerator(ITrajectoryGenerator):
         rx, ry, ryaw = robot_pose
 
         if not path:
+            self.current_speed = 0.0
             return 0.0, 0.0, 0.0
 
         # 1. Limpeza de waypoints já ultrapassados (Lookahead dinâmico)
         active_path = self._advance_waypoints(path, (rx, ry))
         if not active_path:
+            self.current_speed = 0.0
             return 0.0, 0.0, 0.0
 
         target_wp = active_path[0]
@@ -74,6 +77,7 @@ class TrapezoidalTrajectoryGenerator(ITrajectoryGenerator):
 
         # Se já estiver exatamente no alvo final (tolerância de 3 cm), encerra o movimento
         if total_remaining_dist < 0.03:
+            self.current_speed = 0.0
             vw = self._compute_angular_velocity(ryaw, target_yaw, 0.0, 0.0)
             return 0.0, 0.0, vw
 
@@ -109,9 +113,18 @@ class TrapezoidalTrajectoryGenerator(ITrajectoryGenerator):
         # Teto de velocidade admissível para este ciclo
         speed_ceiling = min(self.max_vel, corner_speed_limit, v_brake_limit)
 
-        # Rampa de aceleração limitada por a_max * dt respeitando o teto físico
+        # Rampa de aceleração contínua mantendo o estado da velocidade do ciclo anterior
         max_delta_v = self.max_acc * self.dt
-        commanded_speed = min(speed_ceiling, max(0.0, current_speed_proj + max_delta_v))
+        # Sincronização dinâmica: utiliza a velocidade interna como base,
+        # ou v0_proj se o robô já estiver em movimento mais rápido (ex: retomada externa)
+        baseline_speed = max(self.current_speed, current_speed_proj)
+        commanded_speed = min(speed_ceiling, baseline_speed + max_delta_v)
+
+        # Se o teto de frenagem exigir desaceleração, força a redução imediata
+        if commanded_speed > speed_ceiling:
+            commanded_speed = speed_ceiling
+
+        self.current_speed = commanded_speed
 
         # 6. Geração do Vetor de Velocidade Global
         vx_global = commanded_speed * dir_x

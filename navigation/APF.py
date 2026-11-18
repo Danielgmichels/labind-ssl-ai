@@ -13,7 +13,7 @@ class ProportionalController:
         self.dist_segura = 0.20  # Raio do robô + folga mínima
         self.kr_repulsao = 0.017  # Repulsão base muito mais suave
 
-    def calculate_velocity(self, robot_x, robot_y, robot_yaw, ball_x, ball_y, obstacles, target_yaw=None):
+    def calculate_velocity(self, robot_x, robot_y, robot_yaw, ball_x, ball_y, obstacles, target_yaw=None, robot_id=None, **kwargs):
         # 1. FORÇA DE ATRAÇÃO
         attr_x = ball_x - robot_x  
         attr_y = ball_y - robot_y  

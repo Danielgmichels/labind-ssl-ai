@@ -45,7 +45,8 @@ class ActionPrepareKickoff(Node):
         # Agora acessamos o controller e os obstáculos diretamente do Blackboard
         vf, vl, _ = blackboard.controller.calculate_velocity(
             blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw, 
-            alvo_x, alvo_y, blackboard.obstacles
+            alvo_x, alvo_y, blackboard.obstacles,
+            robot_id=blackboard.my_id
         )
         
         # 3. Rotação (Mira na bola)
@@ -114,10 +115,11 @@ class ActionGoToBall(Node):
             alvo_y = max(-1.8, min(alvo_y, 1.8))
 
 
-        # APF para calcular o caminho, desviando de robôs e das paredes virtuais
+        # APF / Path Planner para calcular o caminho, desviando de robôs e das paredes virtuais
         vf, vl, vw = blackboard.controller.calculate_velocity(
             blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw, 
-            alvo_x, alvo_y, blackboard.obstacles
+            alvo_x, alvo_y, blackboard.obstacles,
+            robot_id=blackboard.my_id
         )
         
         # PASS RECEPTION ASSIST: Se este robô é o alvo do passe em andamento,
@@ -181,7 +183,8 @@ class ActionSmartDribble(Node):
         # 2. Navegação com APF usando o novo alvo dinâmico
         vf, vl, vw = blackboard.controller.calculate_velocity(
             blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw, 
-            alvo_x, alvo_y, blackboard.obstacles
+            alvo_x, alvo_y, blackboard.obstacles,
+            robot_id=blackboard.my_id
         )
         
         # 3. O Freio de Evasão
@@ -337,7 +340,8 @@ class ActionShieldBall(Node):
         # 5. Navegação com Orientação Desacoplada
         vf, vl, vw = blackboard.controller.calculate_velocity(
             blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw,
-            alvo_x, alvo_y, obstacles_filtered, target_yaw=target_yaw
+            alvo_x, alvo_y, obstacles_filtered, target_yaw=target_yaw,
+            robot_id=blackboard.my_id
         )
 
         blackboard.action.send_command(
@@ -476,7 +480,8 @@ class ActionPositionForPass(Node):
         # 2. Navegação com APF
         vf, vl, vw = blackboard.controller.calculate_velocity(
             blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw, 
-            alvo_x, alvo_y, blackboard.obstacles
+            alvo_x, alvo_y, blackboard.obstacles,
+            robot_id=blackboard.my_id
         )
         
         # 3. Gira como um radar (Bico apontado para a bola)
@@ -592,7 +597,8 @@ class ActionInterceptPass(Node):
         # 2. Navega IGNORANDO as paredes do APF (lista vazia []) para não ser repelido da jogada
         vf, vl, _ = blackboard.controller.calculate_velocity(
             blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw, 
-            intercept_x, intercept_y, [] 
+            intercept_x, intercept_y, [],
+            robot_id=blackboard.my_id
         )
 
         # Boost de aceleração na recepção: se houver erro em relação à trajetória,
@@ -664,7 +670,8 @@ class ActionDefendGoal(Node):
         # 4. Navegação 100% focada, ignorando as barreiras da área para o goleiro poder se mexer solto
         vf, vl, vw = blackboard.controller.calculate_velocity(
             blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw, 
-            alvo_x, alvo_y, [] # O Goleiro ignora paredes virtuais!
+            alvo_x, alvo_y, [], # O Goleiro ignora paredes virtuais!
+            robot_id=blackboard.my_id
         )
         
         # 5. Gira encarando a bola
@@ -714,7 +721,8 @@ class ActionClearBall(Node):
             # 2. Navega até a bola com o APF normal
             vf, vl, _ = blackboard.controller.calculate_velocity(
                 blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw, 
-                alvo_x, alvo_y, blackboard.obstacles
+                alvo_x, alvo_y, blackboard.obstacles,
+                robot_id=blackboard.my_id
             )
             
         else:
@@ -808,7 +816,8 @@ class ActionZagueiroBloqueio(Node):
         # 3. Navegação com APF
         vf, vl, _ = blackboard.controller.calculate_velocity(
             blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw, 
-            alvo_x, alvo_y, blackboard.obstacles
+            alvo_x, alvo_y, blackboard.obstacles,
+            robot_id=blackboard.my_id
         )
         
         # 4. Gira sempre encarando a bola para estar pronto pro bote
@@ -880,7 +889,8 @@ class ActionZagueiroMarcacao(Node):
         # Navega com APF
         vf, vl, vw = blackboard.controller.calculate_velocity(
             blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw, 
-            alvo_x, alvo_y, blackboard.obstacles
+            alvo_x, alvo_y, blackboard.obstacles,
+            robot_id=blackboard.my_id
         )
         
         # Gira encarando a bola
@@ -938,7 +948,8 @@ class ActionMidfieldSupport(Node):
         # 3. Navega com o nosso APF
         vf, vl, vw = blackboard.controller.calculate_velocity(
             blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw, 
-            alvo_x, alvo_y, blackboard.obstacles
+            alvo_x, alvo_y, blackboard.obstacles,
+            robot_id=blackboard.my_id
         )
         
         # 4. Gira encarando a bola a todo momento (Radar ativo)
@@ -1083,7 +1094,8 @@ class ActionFormDefensiveWall(Node):
         # 4. Navegação usando nosso APF
         vf, vl, _ = blackboard.controller.calculate_velocity(
             blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw, 
-            alvo_x, alvo_y, blackboard.obstacles
+            alvo_x, alvo_y, blackboard.obstacles,
+            robot_id=blackboard.my_id
         )
         
         # 5. Gira cravado encarando a bola para preparar o rebote
@@ -1146,7 +1158,8 @@ class ActionMarkEnemy(Node):
         # Navega com APF
         vf, vl, _ = blackboard.controller.calculate_velocity(
             blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw, 
-            alvo_x, alvo_y, blackboard.obstacles
+            alvo_x, alvo_y, blackboard.obstacles,
+            robot_id=blackboard.my_id
         )
         
         # Gira encarando a bola a todo momento (Radar ativo)
@@ -1183,7 +1196,9 @@ class ActionPositionForShortPass(Node):
         alvo_y = blackboard.ball_pos.y + (math.sin(angulo_final) * self.distancia)
 
         vf, vl, _ = blackboard.controller.calculate_velocity(
-            blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw, alvo_x, alvo_y, blackboard.obstacles)
+            blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw, alvo_x, alvo_y, blackboard.obstacles,
+            robot_id=blackboard.my_id
+        )
         
         # Gira para olhar para a bola, pronto para o passe (Domínio magnético)
         target_angle = math.atan2(blackboard.ball_pos.y - blackboard.my_pos.pos.y, blackboard.ball_pos.x - blackboard.my_pos.pos.x)
@@ -1212,7 +1227,9 @@ class ActionPositionForCross(Node):
         alvo_y = self.y_offset
 
         vf, vl, _ = blackboard.controller.calculate_velocity(
-            blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw, alvo_x, alvo_y, blackboard.obstacles)
+            blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw, alvo_x, alvo_y, blackboard.obstacles,
+            robot_id=blackboard.my_id
+        )
         
         # Gira acompanhando a bola
         target_angle = math.atan2(blackboard.ball_pos.y - blackboard.my_pos.pos.y, blackboard.ball_pos.x - blackboard.my_pos.pos.x)
@@ -1286,7 +1303,8 @@ class ActionPositionForKickoff(Node):
 
         vf, vl, _ = blackboard.controller.calculate_velocity(
             blackboard.my_pos.pos.x, blackboard.my_pos.pos.y, blackboard.my_pos.yaw, 
-            alvo_x, alvo_y, blackboard.obstacles
+            alvo_x, alvo_y, blackboard.obstacles,
+            robot_id=blackboard.my_id
         )
         
         target_angle = math.atan2(look_y - blackboard.my_pos.pos.y, look_x - blackboard.my_pos.pos.x)

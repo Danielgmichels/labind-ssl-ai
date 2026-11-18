@@ -466,11 +466,14 @@ class ConditionIsUnderPressure(Node):
     """
     Retorna SUCCESS se houver um adversário dentro do raio de perigo (danger_radius),
     ameaçando roubar a posse de bola.
+    Aplica filtro direcional: apenas adversários no cone frontal/lateral ameaçam a bola.
+    Adversários na retaguarda (traseira) são ignorados para não interromper arrancadas ofensivas.
     Salva o adversário mais próximo em blackboard.threatening_enemy.
     """
-    def __init__(self, danger_radius=None):
+    def __init__(self, danger_radius=None, max_threat_angle_deg=105.0):
         super().__init__()
         self.danger_radius = danger_radius
+        self.max_threat_angle_rad = math.radians(max_threat_angle_deg)
 
     def tick(self, blackboard):
         if blackboard.my_pos is None:
@@ -489,12 +492,18 @@ class ConditionIsUnderPressure(Node):
             if abs(obs.pos.x) < 0.001 and abs(obs.pos.y) < 0.001:
                 continue
 
-            dist = math.hypot(obs.pos.x - blackboard.my_pos.pos.x,
-                              obs.pos.y - blackboard.my_pos.pos.y)
+            dx = obs.pos.x - blackboard.my_pos.pos.x
+            dy = obs.pos.y - blackboard.my_pos.pos.y
+            dist = math.hypot(dx, dy)
 
             if dist < threshold and dist < min_dist:
-                min_dist = dist
-                closest_enemy = obs
+                # FILTRO DIRECIONAL: Só considera ameaça se estiver no cone frontal/lateral
+                # Se estiver atrás do robô, o próprio chassi já bloqueia e o robô deve arrancar
+                angle_to_enemy = math.atan2(dy, dx)
+                angle_diff = (angle_to_enemy - blackboard.my_pos.yaw + math.pi) % (2.0 * math.pi) - math.pi
+                if abs(angle_diff) <= self.max_threat_angle_rad:
+                    min_dist = dist
+                    closest_enemy = obs
 
         if closest_enemy is not None:
             blackboard.threatening_enemy = closest_enemy
