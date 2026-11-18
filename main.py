@@ -80,7 +80,7 @@ def main():
     # 2. Inicializa os módulos de infraestrutura
     vision = VisionClient(port=5558) 
     referee = RefereeClient(ip="224.5.23.1", port=10003)
-    controller = NavigationManager(planner_type="C_VG", max_vel=2.5, max_acc=5.0)
+    controller = NavigationManager(planner_type="C_VG", max_vel=3.0, max_acc=5.0)
     action = ActionClient(port=porta_comando)
     
     # 3. Inicializa o WorldModel e o Blackboard

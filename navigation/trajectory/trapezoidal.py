@@ -17,7 +17,7 @@ class TrapezoidalTrajectoryGenerator(ITrajectoryGenerator):
 
     def __init__(
         self,
-        max_vel: float = 2.5,
+        max_vel: float = 3.0,
         max_acc: float = 5.0,
         max_lat_acc: float = 3.5,
         kp_angular: float = 2.0,
